@@ -1,0 +1,10 @@
+node_modules/
+dist/
+main.js
+main.js.map
+*.log
+.env
+.env.local
+data.json
+test-books/
+coverage/
