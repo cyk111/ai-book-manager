@@ -148,5 +148,48 @@ export class AIBookSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+
+    // ---- Enable Auto Sync ----
+    const autoSyncSetting = new Setting(containerEl)
+      .setName('启用自动同步')
+      .setDesc('启动 Obsidian 时自动扫描新书（需先配置书籍目录且图书库文件夹存在）')
+      .addToggle(toggle =>
+        toggle
+          .setValue(this.plugin.settings.autoSyncOnStartup)
+          .onChange(async value => {
+            this.plugin.settings.autoSyncOnStartup = value;
+            // When auto-sync turned off, also disable file watcher
+            if (!value && this.plugin.settings.watchBookDirectory) {
+              this.plugin.settings.watchBookDirectory = false;
+            }
+            await this.plugin.saveSettings();
+            // Re-render to update file watcher toggle state
+            this.display();
+          }),
+      );
+
+    // ---- Enable File Watcher (depends on auto-sync) ----
+    const watcherSetting = new Setting(containerEl)
+      .setName('实时监听文件变更')
+      .setDesc('监听书籍目录的文件变化，自动同步新书（依赖「启用自动同步」）')
+      .addToggle(toggle => {
+        toggle
+          .setValue(this.plugin.settings.watchBookDirectory)
+          .onChange(async value => {
+            this.plugin.settings.watchBookDirectory = value;
+            await this.plugin.saveSettings();
+          });
+
+        // Disable when auto-sync is off
+        if (!this.plugin.settings.autoSyncOnStartup) {
+          toggle.setDisabled(true);
+        }
+      });
+
+    // Grey out the entire row when auto-sync is off
+    if (!this.plugin.settings.autoSyncOnStartup) {
+      watcherSetting.settingEl.style.opacity = '0.5';
+      watcherSetting.setDisabled(true);
+    }
   }
 }

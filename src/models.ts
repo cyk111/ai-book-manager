@@ -107,6 +107,10 @@ export interface PluginSettings {
   maxScanPages: number;
   /** Max concurrent AI requests */
   maxConcurrency: number;
+  /** Automatically run incremental scan on plugin startup */
+  autoSyncOnStartup: boolean;
+  /** Watch book directory for changes in real-time (fs.watch) */
+  watchBookDirectory: boolean;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -119,6 +123,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   notesFolder: '📚图书库',
   maxScanPages: 3,
   maxConcurrency: 1,
+  autoSyncOnStartup: false,
+  watchBookDirectory: false,
 };
 
 /**

@@ -386,6 +386,14 @@ export class Setting {
     _cb(sliderComp);
     return this;
   }
+
+  /** The root DOM element of this setting row. */
+  settingEl: HTMLElement = document.createElement('div');
+
+  /** Disable or enable the entire setting. */
+  setDisabled(_disabled: boolean): this {
+    return this;
+  }
 }
 
 export class TextComponent {
@@ -400,9 +408,11 @@ export class TextComponent {
 export class ToggleComponent {
   _value = false;
   _onChange: ((value: boolean) => void) | null = null;
+  _disabled = false;
   setValue(val: boolean): this { this._value = val; return this; }
   onChange(cb: (value: boolean) => void): this { this._onChange = cb; return this; }
   getValue(): boolean { return this._value; }
+  setDisabled(disabled: boolean): this { this._disabled = disabled; return this; }
 }
 
 export class SliderComponent {
