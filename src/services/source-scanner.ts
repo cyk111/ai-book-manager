@@ -140,6 +140,7 @@ export class SourceScanner {
           notePath: null,
           source: source.name,
           sourcePath: file.path,
+          skillPath: null,
           createdAt: now,
           updatedAt: now,
         };

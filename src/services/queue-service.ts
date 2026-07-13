@@ -44,15 +44,18 @@ export class TaskQueue<T = unknown> {
   private lastTaskEndTime = 0;
   private listeners: Map<string, Array<(...args: unknown[]) => void>> = new Map();
   private log: Logger;
+  private onPersist: (() => void) | null = null;
 
   constructor(
     maxConcurrency: number = 1,
     minIntervalMs: number = 0,
     logger: Logger = NOOP_LOGGER,
+    onPersist?: () => void,
   ) {
     this.maxConcurrency = maxConcurrency;
     this.minIntervalMs = minIntervalMs;
     this.log = logger;
+    this.onPersist = onPersist || null;
   }
 
   // ---- Public API ----
@@ -69,6 +72,7 @@ export class TaskQueue<T = unknown> {
     this.queue.push(task);
     this.log.debug('Task enqueued', { taskId: task.id, type: task.type, queueLength: this.queue.length });
     this.emit('task-enqueued', task);
+    this.persist();
     this.processNext();
   }
 
@@ -203,8 +207,15 @@ export class TaskQueue<T = unknown> {
     } finally {
       this.inProgress.delete(task.id);
       this.lastTaskEndTime = Date.now();
+      this.persist();
       // Process next in queue
       this.processNext();
+    }
+  }
+
+  private persist(): void {
+    if (this.onPersist) {
+      try { this.onPersist(); } catch { /* don't let persist errors break queue */ }
     }
   }
 

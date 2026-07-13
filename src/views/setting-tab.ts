@@ -5,6 +5,7 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import type AIBookManagerPlugin from '../../main';
 import { NoteSource, AI_PROVIDER_CONFIG } from '../models';
+import { SKILL_SYNC_TOOLS } from '../constants';
 
 /** Parse "name=path" lines into NoteSource array */
 function parseNoteSources(text: string): NoteSource[] {
@@ -101,7 +102,13 @@ export class AIBookSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.aiApiKey)
           .onChange(async value => {
             this.plugin.settings.aiApiKey = value;
+            // Auto-enable tagging when user first configures API key
+            if (value.trim() && !this.plugin.settings.autoTagging && !this.plugin.settings._autoTaggingSetByUser) {
+              this.plugin.settings.autoTagging = true;
+            }
             await this.plugin.saveSettings();
+            // Re-render to show the updated auto-tagging toggle
+            if (value.trim()) { this.display(); }
           }),
       );
 
@@ -142,6 +149,7 @@ export class AIBookSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.autoTagging)
           .onChange(async value => {
             this.plugin.settings.autoTagging = value;
+            this.plugin.settings._autoTaggingSetByUser = true;
             await this.plugin.saveSettings();
           }),
       );
@@ -277,5 +285,57 @@ export class AIBookSettingTab extends PluginSettingTab {
             new Notice(`✅ 扫描完成：${total} 本新书`);
           }),
       );
+
+    // ---- Skill Generation ----
+    containerEl.createEl('h3', { text: 'Skill 生成' });
+    containerEl.createEl('p', {
+      text: '将书籍编译为通用 AI Skill（Markdown 格式），存放在图书库/Skills/ 下。可同步到不同 AI 工具。',
+      cls: 'setting-item-description',
+    }).style.cssText = 'margin-bottom: 8px; color: var(--text-muted); font-size: 0.85em;';
+
+    new Setting(containerEl)
+      .setName('Skill 生成模式')
+      .setDesc('轻量：仅 SKILL.md + 章节概要。完整：额外生成术语表 + 模式库 + 速查表')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('light', '轻量（推荐）')
+          .addOption('full', '完整')
+          .setValue(this.plugin.settings.skillMode)
+          .onChange(async value => {
+            this.plugin.settings.skillMode = value as 'light' | 'full';
+            await this.plugin.saveSettings();
+          });
+        return dropdown;
+      });
+
+    // ---- Tool Sync Targets ----
+    containerEl.createEl('h4', { text: '同步到 AI 工具' });
+    containerEl.createEl('p', {
+      text: '勾选后，生成 Skill 时自动在对应工具目录下创建软链接，指向 Vault 中的 Skill 文件。',
+      cls: 'setting-item-description',
+    }).style.cssText = 'margin-bottom: 8px; color: var(--text-muted); font-size: 0.8em;';
+
+    const syncTargets = this.plugin.settings.skillSyncTargets || [];
+
+    for (const [id, tool] of Object.entries(SKILL_SYNC_TOOLS)) {
+      new Setting(containerEl)
+        .setName(tool.name)
+        .setDesc(tool.defaultPath)
+        .addToggle(toggle =>
+          toggle
+            .setValue(syncTargets.includes(id))
+            .onChange(async value => {
+              const targets = this.plugin.settings.skillSyncTargets || [];
+              if (value) {
+                if (!targets.includes(id)) targets.push(id);
+              } else {
+                const idx = targets.indexOf(id);
+                if (idx >= 0) targets.splice(idx, 1);
+              }
+              this.plugin.settings.skillSyncTargets = targets;
+              await this.plugin.saveSettings();
+            }),
+        );
+    }
   }
 }

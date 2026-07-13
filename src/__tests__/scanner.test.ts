@@ -275,6 +275,7 @@ describe('Scanner', () => {
         notePath: null,
         source: '本地书籍',
         sourcePath: null,
+        skillPath: null,
         createdAt: 1000,
         updatedAt: 1000,
       });

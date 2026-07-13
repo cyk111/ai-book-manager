@@ -436,6 +436,626 @@ Keep it under 500 words.`;
   return { content, tokenUsed: totalTokens };
 }
 
+// ---- Skill Generation AI Functions ----
+
+/**
+ * Analyze a book's structure: identify chapters, key themes, book type.
+ * Used as step 1 of the skill generation pipeline.
+ */
+export async function analyzeBookStructure(
+  config: AIConfig,
+  title: string,
+  author: string | null,
+  fullText: string,
+  logger: Logger = NOOP_LOGGER,
+): Promise<{
+  chapters: Array<{ title: string; startIndex: number }>;
+  keyThemes: string[];
+  bookType: string;
+  tokenUsed: number;
+}> {
+  const cid = generateCorrelationId();
+
+  if (!config.apiKey) {
+    throw new AIError('API key is not configured', cid, { title });
+  }
+
+  const text = fullText.slice(0, TOKEN_BUDGET.SKILL_STRUCTURE_MAX_INPUT);
+  const inputTokens = estimateTokens(text);
+
+  const response = await fetchWithRetry(
+    `${config.baseUrl}/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个严谨的书籍结构分析者。只能基于提供的书籍内容提取章节结构，绝不编造章节标题或顺序。如果内容不足以提取完整结构，只列出已确认的部分。只输出合法 JSON。',
+          },
+          {
+            role: 'user',
+            content: `Analyze this book and identify all chapters with approximate character positions.
+
+Title: ${title}${author ? `\nAuthor: ${author}` : ''}
+
+Book content:
+${text}
+
+Return ONLY valid JSON:
+{
+  "chapters": [
+    {"title": "第1章：章节标题", "startIndex": 0},
+    {"title": "第2章：章节标题", "startIndex": 1500}
+  ],
+  "keyThemes": ["主题1", "主题2", "主题3"],
+  "bookType": "technical"
+}
+
+Rules:
+- "startIndex" is the approximate character position (0-based) where this chapter begins
+- Extract REAL chapter titles from the text — do NOT invent names
+- If no clear chapter divisions, return one chapter with title "完整内容"
+- "bookType" must be "technical" or "text"
+- "keyThemes": 3-5 broad topics the book covers
+- Write chapter titles in Chinese`,
+          },
+        ] as ChatMessage[],
+        temperature: 0.3,
+        max_tokens: TOKEN_BUDGET.SKILL_STRUCTURE_MAX_OUTPUT,
+        response_format: { type: 'json_object' },
+      }),
+    },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS,
+    logger,
+  );
+
+  if (!response.ok) {
+    throw new AIError(`API error (${response.status})`, cid, { title });
+  }
+
+  const data = (await response.json()) as ChatCompletionResponse;
+  const content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new AIError('API returned empty response for structure analysis', cid, { title });
+  }
+
+  let parsed: { chapters: Array<{ title: string; startIndex: number }>; keyThemes: string[]; bookType: string };
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    // Fallback: treat entire text as one chapter
+    parsed = { chapters: [{ title: '完整内容', startIndex: 0 }], keyThemes: [], bookType: 'text' };
+  }
+
+  const totalTokens = data.usage?.total_tokens ?? inputTokens + estimateTokens(content);
+
+  logger.info('Book structure analyzed', {
+    title,
+    chapterCount: parsed.chapters?.length || 1,
+    bookType: parsed.bookType,
+    tokenUsed: totalTokens,
+  });
+
+  return {
+    chapters: parsed.chapters || [{ title: '完整内容', startIndex: 0 }],
+    keyThemes: parsed.keyThemes || [],
+    bookType: parsed.bookType || 'text',
+    tokenUsed: totalTokens,
+  };
+}
+
+/**
+ * Generate a consolidated summary for a batch of chapters (1-3 chapters per call).
+ */
+export async function generateChapterSummaries(
+  config: AIConfig,
+  bookTitle: string,
+  chapterNumbers: number[],
+  chapterTitles: string[],
+  chapterTexts: string[],
+  logger: Logger = NOOP_LOGGER,
+): Promise<{ summaries: Array<{ number: number; title: string; summary: string }>; tokenUsed: number }> {
+  const cid = generateCorrelationId();
+
+  if (!config.apiKey) {
+    throw new AIError('API key is not configured', cid, { title: bookTitle });
+  }
+
+  // Build prompt with all chapters in this batch
+  let chaptersSection = '';
+  const allText = [];
+  for (let i = 0; i < chapterNumbers.length; i++) {
+    const text = chapterTexts[i].slice(0, TOKEN_BUDGET.SKILL_CHAPTER_MAX_INPUT);
+    chaptersSection += `\n### Chapter ${chapterNumbers[i]}: ${chapterTitles[i]}\n${text}\n`;
+    allText.push(text);
+  }
+
+  const combinedText = chaptersSection.slice(0, TOKEN_BUDGET.SKILL_CHAPTER_MAX_INPUT * chapterNumbers.length);
+  const inputTokens = estimateTokens(combinedText);
+
+  const response = await fetchWithRetry(
+    `${config.baseUrl}/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个严谨的章节总结者。只能基于提供的章节内容进行提炼，绝不编造任何信息。如果内容不足，明确说明。用中文输出。',
+          },
+          {
+            role: 'user',
+            content: `Write a comprehensive chapter analysis for each chapter below. This will be used in a Claude Code skill file, loaded on-demand when Claude needs detailed knowledge.
+
+Book: ${bookTitle}
+
+${combinedText}
+
+For each chapter, output in this format:
+
+## Chapter {number}: {title}
+
+### 核心概念
+- **概念**: 解释（必须可在原文中找到依据）
+
+### 核心论点
+- 本章的主要论点或叙事发展
+
+### 关键启示
+- 读者应从本章获得的核心启示
+
+### 值得注意的引用
+- "原文引用"——如果在原文中存在
+
+Rules:
+- ONLY use information from the provided text
+- If a section has no content, write "（本章无相关内容）"
+- Write in Chinese
+- Keep each chapter summary concise (~500-800 words)`,
+          },
+        ] as ChatMessage[],
+        temperature: 0.5,
+        max_tokens: TOKEN_BUDGET.SKILL_CHAPTER_MAX_OUTPUT * chapterNumbers.length,
+      }),
+    },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS * 3, // 90s timeout for batch
+    logger,
+  );
+
+  if (!response.ok) {
+    throw new AIError(`API error (${response.status})`, cid, { title: bookTitle });
+  }
+
+  const data = (await response.json()) as ChatCompletionResponse;
+  const content = data.choices?.[0]?.message?.content?.trim() || '';
+  const totalTokens = data.usage?.total_tokens ?? inputTokens + estimateTokens(content);
+
+  // Parse the combined output back into per-chapter summaries
+  const summaries: Array<{ number: number; title: string; summary: string }> = [];
+  for (let i = 0; i < chapterNumbers.length; i++) {
+    const marker = `## Chapter ${chapterNumbers[i]}:`;
+    const nextMarker = i + 1 < chapterNumbers.length
+      ? `## Chapter ${chapterNumbers[i + 1]}:`
+      : null;
+
+    let section = '';
+    const startIdx = content.indexOf(marker);
+    if (startIdx >= 0) {
+      const endIdx = nextMarker ? content.indexOf(nextMarker, startIdx + marker.length) : content.length;
+      section = content.slice(startIdx + marker.length, endIdx >= 0 ? endIdx : content.length).trim();
+    }
+
+    summaries.push({
+      number: chapterNumbers[i],
+      title: chapterTitles[i],
+      summary: section || `（无法从 API 响应中解析本章内容）`,
+    });
+  }
+
+  logger.info('Chapter summaries generated', {
+    bookTitle,
+    batchSize: chapterNumbers.length,
+    tokenUsed: totalTokens,
+  });
+
+  return { summaries, tokenUsed: totalTokens };
+}
+
+/**
+ * Generate a glossary of key terms from chapter summaries (full mode only).
+ */
+export async function generateGlossary(
+  config: AIConfig,
+  title: string,
+  chapterData: Array<{ number: number; title: string; summary: string }>,
+  logger: Logger = NOOP_LOGGER,
+): Promise<{ glossary: string; tokenUsed: number }> {
+  const cid = generateCorrelationId();
+
+  if (!config.apiKey) {
+    throw new AIError('API key is not configured', cid, { title });
+  }
+
+  const chaptersText = chapterData
+    .map(c => `### 第${c.number}章：${c.title}\n${c.summary}`)
+    .join('\n\n')
+    .slice(0, TOKEN_BUDGET.SKILL_GLOSSARY_MAX_INPUT);
+  const inputTokens = estimateTokens(chaptersText);
+
+  const response = await fetchWithRetry(
+    `${config.baseUrl}/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个严谨的术语提取者。只能基于提供的章节概要提取术语和概念定义，绝不编造或推测原文中不存在的术语。用中文输出。',
+          },
+          {
+            role: 'user',
+            content: `Create a glossary of key terms from this book for a Claude Code skill.
+
+Book: ${title}
+
+Chapter summaries:
+${chaptersText}
+
+Output a Markdown glossary:
+
+## 术语表
+
+- **术语名称**: 简洁定义（1-2行）。见第X章 — 章节标题
+
+Rules:
+- Include ONLY terms that appear in the provided chapter summaries
+- If there are fewer than 5 extractable terms, that's fine — do NOT invent terms
+- Sort terms logically or alphabetically
+- Each definition must be grounded in the provided text
+- Write in Chinese`,
+          },
+        ] as ChatMessage[],
+        temperature: 0.4,
+        max_tokens: TOKEN_BUDGET.SKILL_GLOSSARY_MAX_OUTPUT,
+      }),
+    },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS,
+    logger,
+  );
+
+  if (!response.ok) {
+    throw new AIError(`API error (${response.status})`, cid, { title });
+  }
+
+  const data = (await response.json()) as ChatCompletionResponse;
+  const glossary = data.choices?.[0]?.message?.content?.trim() || '';
+  const totalTokens = data.usage?.total_tokens ?? inputTokens + estimateTokens(glossary);
+
+  logger.info('Glossary generated', { title, tokenUsed: totalTokens });
+  return { glossary, tokenUsed: totalTokens };
+}
+
+/**
+ * Extract techniques, patterns, and methodologies from the book (full mode only).
+ */
+export async function generatePatterns(
+  config: AIConfig,
+  title: string,
+  chapterData: Array<{ number: number; title: string; summary: string }>,
+  logger: Logger = NOOP_LOGGER,
+): Promise<{ patterns: string; tokenUsed: number }> {
+  const cid = generateCorrelationId();
+
+  if (!config.apiKey) {
+    throw new AIError('API key is not configured', cid, { title });
+  }
+
+  const chaptersText = chapterData
+    .map(c => `### 第${c.number}章：${c.title}\n${c.summary}`)
+    .join('\n\n')
+    .slice(0, TOKEN_BUDGET.SKILL_PATTERNS_MAX_INPUT);
+  const inputTokens = estimateTokens(chaptersText);
+
+  const response = await fetchWithRetry(
+    `${config.baseUrl}/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个严谨的模式提取者。只能基于提供的章节概要提取技术、算法、设计模式和方法论，绝不编造或补充原文中没有的信息。用中文输出。',
+          },
+          {
+            role: 'user',
+            content: `Extract techniques, algorithms, design patterns, frameworks, and methodologies from this book.
+
+Book: ${title}
+
+Chapter summaries:
+${chaptersText}
+
+Output a Markdown document:
+
+## 技术与方法
+
+### [技术/方法名称]
+- **来源**: 第X章 — 章节标题
+- **描述**: 2-3行描述（基于原文）
+- **应用场景**: 何时使用（基于原文）
+
+## 设计原则
+
+- **原则名称**: 描述（基于原文）
+
+Rules:
+- ONLY extract patterns explicitly described in the provided summaries
+- If the book doesn't contain technical patterns (fiction, memoir, etc.), output: "（本书不包含技术类模式）"
+- Do not extrapolate beyond what's stated in the source material
+- Write in Chinese`,
+          },
+        ] as ChatMessage[],
+        temperature: 0.4,
+        max_tokens: TOKEN_BUDGET.SKILL_PATTERNS_MAX_OUTPUT,
+      }),
+    },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS,
+    logger,
+  );
+
+  if (!response.ok) {
+    throw new AIError(`API error (${response.status})`, cid, { title });
+  }
+
+  const data = (await response.json()) as ChatCompletionResponse;
+  const patterns = data.choices?.[0]?.message?.content?.trim() || '';
+  const totalTokens = data.usage?.total_tokens ?? inputTokens + estimateTokens(patterns);
+
+  logger.info('Patterns generated', { title, tokenUsed: totalTokens });
+  return { patterns, tokenUsed: totalTokens };
+}
+
+/**
+ * Generate a quick-reference cheatsheet (full mode only).
+ */
+export async function generateCheatsheet(
+  config: AIConfig,
+  title: string,
+  chapterData: Array<{ number: number; title: string; summary: string }>,
+  logger: Logger = NOOP_LOGGER,
+): Promise<{ cheatsheet: string; tokenUsed: number }> {
+  const cid = generateCorrelationId();
+
+  if (!config.apiKey) {
+    throw new AIError('API key is not configured', cid, { title });
+  }
+
+  const chaptersText = chapterData
+    .map(c => `### 第${c.number}章：${c.title}\n${c.summary}`)
+    .join('\n\n')
+    .slice(0, TOKEN_BUDGET.SKILL_CHEATSHEET_MAX_INPUT);
+  const inputTokens = estimateTokens(chaptersText);
+
+  const response = await fetchWithRetry(
+    `${config.baseUrl}/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个严谨的信息提取者。只能基于提供的章节概要创建速查表，绝不编造或补充原文中没有的信息。用中文输出。',
+          },
+          {
+            role: 'user',
+            content: `Create a quick-reference cheatsheet for a Claude Code skill.
+
+Book: ${title}
+
+Chapter summaries:
+${chaptersText}
+
+Output a Markdown cheatsheet:
+
+## 速查表
+
+### 核心概念速查
+| 概念 | 定义 | 章节 |
+|------|------|------|
+
+### 决策框架
+| 场景 | 建议方案 | 依据（章节） |
+|------|---------|------------|
+
+### 关键公式/原则
+- **名称**: 描述（必须可在原文中找到依据）
+
+Rules:
+- ONLY use information from the provided summaries
+- If a table would be empty, omit it
+- Keep cells concise — this is a quick reference
+- Do not invent frameworks, formulas, or rules
+- Write in Chinese`,
+          },
+        ] as ChatMessage[],
+        temperature: 0.4,
+        max_tokens: TOKEN_BUDGET.SKILL_CHEATSHEET_MAX_OUTPUT,
+      }),
+    },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS,
+    logger,
+  );
+
+  if (!response.ok) {
+    throw new AIError(`API error (${response.status})`, cid, { title });
+  }
+
+  const data = (await response.json()) as ChatCompletionResponse;
+  const cheatsheet = data.choices?.[0]?.message?.content?.trim() || '';
+  const totalTokens = data.usage?.total_tokens ?? inputTokens + estimateTokens(cheatsheet);
+
+  logger.info('Cheatsheet generated', { title, tokenUsed: totalTokens });
+  return { cheatsheet, tokenUsed: totalTokens };
+}
+
+/**
+ * Synthesize all analysis into the final SKILL.md.
+ * This is the master file that Claude Code loads when the skill is invoked.
+ */
+export async function generateSkillMd(
+  config: AIConfig,
+  title: string,
+  author: string | null,
+  slug: string,
+  keyThemes: string[],
+  bookType: string,
+  chapterData: Array<{ number: number; title: string; summary: string }>,
+  mode: 'light' | 'full',
+  logger: Logger = NOOP_LOGGER,
+): Promise<{ skillMd: string; tokenUsed: number }> {
+  const cid = generateCorrelationId();
+
+  if (!config.apiKey) {
+    throw new AIError('API key is not configured', cid, { title });
+  }
+
+  const chaptersSummary = chapterData
+    .map(c => `- 第${c.number}章：${c.title} — ${c.summary.slice(0, 200)}`)
+    .join('\n')
+    .slice(0, TOKEN_BUDGET.SKILL_MD_MAX_INPUT);
+
+  const modeNote = mode === 'light'
+    ? '- 轻量模式：不包含 glossary.md、patterns.md、cheatsheet.md'
+    : '- 完整模式：包含 glossary.md（术语表）、patterns.md（模式库）、cheatsheet.md（速查表）';
+
+  const inputTokens = estimateTokens(chaptersSummary);
+
+  const response = await fetchWithRetry(
+    `${config.baseUrl}/chat/completions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个严谨的技能文档编写者。只能基于提供的书籍分析结果编写 Claude Code 技能文档，绝不编造或补充分析结果中没有的信息。用中文输出。',
+          },
+          {
+            role: 'user',
+            content: `Create the SKILL.md for a Claude Code skill based on this book analysis.
+
+Book: ${title}${author ? `\nAuthor: ${author}` : ''}
+Type: ${bookType}
+Slug: ${slug}
+Key themes: ${keyThemes.join(', ') || '(none identified)'}
+
+Chapter index:
+${chaptersSummary}
+
+Write a complete SKILL.md:
+
+---
+name: ${slug}
+description: Core mental models from《${title}》— a book about ${keyThemes.slice(0, 3).join('、') || 'various topics'}
+---
+
+# ${title}
+
+## 核心思维模型
+
+[Extract 3-5 core mental models. Each: what + when/how to apply. 2-3 sentences each. Grounded in the chapter data above.]
+
+## 本书概要
+
+[One paragraph summarizing the book's thesis, approach, and audience. Based ONLY on the provided chapter data.]
+
+## 章节索引
+
+[For EACH chapter listed above, write: chapter title + 1-line summary + file path]
+- **第N章：标题**: 一句话概括 → \`chapters/ch{N}-{slug}.md\`
+
+## 使用指南
+
+### 何时调用此 Skill
+- [When to use this book's knowledge]
+- [Specific query types]
+
+### 如何使用
+- 加载 \`chapters/ch{N}-*.md\` 获取章节详细内容
+${modeNote}
+
+Rules:
+- ONLY synthesize from the provided chapter data — do NOT add external knowledge
+- Chapter index MUST exactly match the provided chapter list
+- Keep under 4000 tokens equivalent
+- Write in Chinese
+- Mental models section is the most important — spend the most effort there`,
+          },
+        ] as ChatMessage[],
+        temperature: 0.5,
+        max_tokens: TOKEN_BUDGET.SKILL_MD_MAX_OUTPUT,
+      }),
+    },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS,
+    logger,
+  );
+
+  if (!response.ok) {
+    throw new AIError(`API error (${response.status})`, cid, { title });
+  }
+
+  const data = (await response.json()) as ChatCompletionResponse;
+  const skillMd = data.choices?.[0]?.message?.content?.trim() || '';
+  const totalTokens = data.usage?.total_tokens ?? inputTokens + estimateTokens(skillMd);
+
+  logger.info('SKILL.md generated', { title, tokenUsed: totalTokens });
+  return { skillMd, tokenUsed: totalTokens };
+}
+
 // ---- Verification (POC compatibility) ----
 
 /**

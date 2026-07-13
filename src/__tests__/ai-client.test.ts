@@ -392,3 +392,298 @@ describe('token estimation edge cases', () => {
     expect(global.fetch).toHaveBeenCalled();
   });
 });
+
+// ---- Skill Generation AI Functions ----
+
+import {
+  analyzeBookStructure,
+  generateChapterSummaries,
+  generateGlossary,
+  generatePatterns,
+  generateCheatsheet,
+  generateSkillMd,
+} from '../ai-client';
+
+describe('analyzeBookStructure', () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('should_return_chapters_and_themes_when_api_succeeds', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              chapters: [
+                { title: '第1章：开始', startIndex: 0 },
+                { title: '第2章：深入', startIndex: 500 },
+              ],
+              keyThemes: ['编程', '架构'],
+              bookType: 'technical',
+            }),
+          },
+        }],
+        usage: { total_tokens: 600 },
+      }),
+      text: async () => '',
+    });
+
+    const result = await analyzeBookStructure(config, '测试书', '作者', 'Mock content '.repeat(1000));
+
+    expect(result.chapters).toHaveLength(2);
+    expect(result.chapters[0].title).toBe('第1章：开始');
+    expect(result.keyThemes).toContain('编程');
+    expect(result.bookType).toBe('technical');
+    expect(result.tokenUsed).toBe(600);
+  });
+
+  it('should_fallback_to_single_chapter_on_invalid_json', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: 'not valid json {{{' } }],
+        usage: { total_tokens: 100 },
+      }),
+      text: async () => '',
+    });
+
+    const result = await analyzeBookStructure(config, 'Test', null, 'content');
+
+    expect(result.chapters).toHaveLength(1);
+    expect(result.chapters[0].title).toBe('完整内容');
+  });
+
+  it('should_throw_on_http_error', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'server error' }),
+      text: async () => 'error',
+    });
+
+    await expect(analyzeBookStructure(config, 'Test', null, 'content'))
+      .rejects.toThrow('API error (500)');
+  });
+});
+
+describe('generateChapterSummaries', () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('should_return_summaries_for_batch', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{
+          message: {
+            content: `## Chapter 1: 第一章
+### 核心概念
+- **概念**: 解释
+### 核心论点
+- 论点`,
+          },
+        }],
+        usage: { total_tokens: 500 },
+      }),
+      text: async () => '',
+    });
+
+    const result = await generateChapterSummaries(
+      config, '测试书', [1], ['第一章'], ['chapter text here'],
+    );
+
+    expect(result.summaries).toHaveLength(1);
+    expect(result.summaries[0].number).toBe(1);
+    expect(result.summaries[0].summary).toContain('核心概念');
+    expect(result.tokenUsed).toBe(500);
+  });
+
+  it('should_handle_http_error', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'err' }),
+      text: async () => '',
+    });
+
+    await expect(generateChapterSummaries(config, 'T', [1], ['C1'], ['text']))
+      .rejects.toThrow('API error (500)');
+  });
+});
+
+describe('generateGlossary', () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('should_return_glossary_markdown', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: '## 术语表\n- **术语**: 定义' } }],
+        usage: { total_tokens: 300 },
+      }),
+      text: async () => '',
+    });
+
+    const result = await generateGlossary(config, 'Test', [
+      { number: 1, title: 'Ch1', summary: 'summary text' },
+    ]);
+
+    expect(result.glossary).toContain('术语表');
+    expect(result.tokenUsed).toBe(300);
+  });
+});
+
+describe('generatePatterns', () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('should_return_patterns_markdown', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: '## 技术与方法\n### Pattern A' } }],
+        usage: { total_tokens: 400 },
+      }),
+      text: async () => '',
+    });
+
+    const result = await generatePatterns(config, 'Test', [
+      { number: 1, title: 'Ch1', summary: 'text' },
+    ]);
+
+    expect(result.patterns).toContain('技术');
+    expect(result.tokenUsed).toBe(400);
+  });
+});
+
+describe('generateCheatsheet', () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('should_return_cheatsheet_markdown', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: '## 速查表\n| 概念 | 定义 |' } }],
+        usage: { total_tokens: 350 },
+      }),
+      text: async () => '',
+    });
+
+    const result = await generateCheatsheet(config, 'Test', [
+      { number: 1, title: 'Ch1', summary: 'text' },
+    ]);
+
+    expect(result.cheatsheet).toContain('速查表');
+    expect(result.tokenUsed).toBe(350);
+  });
+});
+
+describe('generateSkillMd', () => {
+  let originalFetch: typeof global.fetch;
+
+  beforeEach(() => {
+    originalFetch = global.fetch;
+    global.fetch = jest.fn();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('should_return_complete_skill_md', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{
+          message: {
+            content: `---
+name: test-slug
+description: A test skill
+---
+
+# Test Book
+
+## 核心思维模型
+### Model 1: Something`,
+          },
+        }],
+        usage: { total_tokens: 2000 },
+      }),
+      text: async () => '',
+    });
+
+    const result = await generateSkillMd(
+      config, 'Test Book', 'Author', 'test-slug',
+      ['主题1', '主题2'], 'technical',
+      [{ number: 1, title: 'Ch1', summary: 'summary' }],
+      'light',
+    );
+
+    expect(result.skillMd).toContain('test-slug');
+    expect(result.skillMd).toContain('核心思维模型');
+    expect(result.tokenUsed).toBe(2000);
+  });
+
+  it('should_throw_on_api_error', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'error' }),
+      text: async () => '',
+    });
+
+    await expect(generateSkillMd(
+      config, 'Test', null, 'slug', [], 'text', [], 'light',
+    )).rejects.toThrow('API error (500)');
+  });
+});

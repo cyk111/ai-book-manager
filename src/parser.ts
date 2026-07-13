@@ -57,6 +57,142 @@ export async function parseBook(
   }
 }
 
+// ---- Full Text Extraction (for skill generation) ----
+
+const FULL_TEXT_MAX_CHARS = 200_000;
+
+/**
+ * Extract the FULL book text for skill generation.
+ * Unlike parseBook() which only reads a preview (first 3 pages),
+ * this reads the entire book up to 200K chars.
+ */
+export async function extractFullText(
+  filePath: string,
+  format: BookFormat,
+  logger: Logger = NOOP_LOGGER,
+): Promise<string> {
+  const cid = generateCorrelationId();
+  logger.info('Extracting full text', { filePath, format });
+
+  switch (format) {
+    case 'txt':
+      return extractFullTextFromTxt(filePath);
+    case 'pdf':
+      return extractFullTextFromPdf(filePath, logger, cid);
+    case 'epub':
+      return extractFullTextFromEpub(filePath, logger, cid);
+    default:
+      throw new ParseError(
+        `Unsupported format for full extraction: ${format}`,
+        cid,
+        { filePath, format },
+      );
+  }
+}
+
+function extractFullTextFromTxt(filePath: string): string {
+  const buffer = fs.readFileSync(filePath, 'utf-8');
+  return buffer.slice(0, FULL_TEXT_MAX_CHARS);
+}
+
+async function extractFullTextFromPdf(
+  filePath: string,
+  logger: Logger,
+  cid: string,
+): Promise<string> {
+  const textParts: string[] = [];
+  let totalChars = 0;
+
+  try {
+    const pdfjsLib = await import('pdfjs-dist');
+    const data = new Uint8Array(fs.readFileSync(filePath));
+    const doc = await pdfjsLib.getDocument({ data }).promise;
+
+    for (let i = 1; i <= doc.numPages && totalChars < FULL_TEXT_MAX_CHARS; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items
+        .map((item: unknown) => {
+          const textItem = item as { str?: string };
+          return textItem.str || '';
+        })
+        .join(' ');
+      textParts.push(pageText);
+      totalChars += pageText.length;
+    }
+
+    const fullText = textParts.join('\n\n');
+    logger.debug('PDF full text extracted', {
+      pagesRead: Math.min(textParts.length, doc.numPages),
+      textLength: fullText.length,
+    });
+    return fullText.slice(0, FULL_TEXT_MAX_CHARS);
+  } catch (err) {
+    logger.warn('PDF full text extraction failed', {
+      filePath,
+      error: String(err),
+    });
+    throw new ParseError(
+      `PDF full text extraction failed: ${String(err)}`,
+      cid,
+      { filePath },
+    );
+  }
+}
+
+function extractFullTextFromEpub(
+  filePath: string,
+  logger: Logger,
+  cid: string,
+): string {
+  const textParts: string[] = [];
+  let totalChars = 0;
+
+  try {
+    const zip = new AdmZip(filePath);
+    const entries = zip.getEntries();
+
+    for (const entry of entries) {
+      if (!entry.entryName.endsWith('.xhtml') && !entry.entryName.endsWith('.html')) continue;
+      if (totalChars >= FULL_TEXT_MAX_CHARS) break;
+
+      let content = entry.getData().toString('utf-8');
+
+      // Strip HTML tags, keep text
+      const text = content
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (text.length > 20) {
+        textParts.push(text);
+        totalChars += text.length;
+      }
+    }
+
+    const fullText = textParts.join('\n\n');
+    logger.debug('EPUB full text extracted', { sections: textParts.length, textLength: fullText.length });
+    return fullText.slice(0, FULL_TEXT_MAX_CHARS);
+  } catch (err) {
+    logger.warn('EPUB full text extraction failed', {
+      filePath,
+      error: String(err),
+    });
+    throw new ParseError(
+      `EPUB full text extraction failed: ${String(err)}`,
+      cid,
+      { filePath },
+    );
+  }
+}
+
 // ---- TXT Parser ----
 
 function parseTextFile(filePath: string, maxPages: number): ParserResult {

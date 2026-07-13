@@ -16,3 +16,17 @@ export type BookCategory = typeof BOOK_CATEGORIES[number];
 /** Default notes folder */
 export const DEFAULT_NOTES_FOLDER = '📚图书库';
 
+/** Skills subfolder within the notes folder */
+export const SKILLS_FOLDER = 'Skills';
+
+/**
+ * Known AI tool sync targets with their default skill directories.
+ * Skills are generated in the vault; symlinks are created to these paths.
+ */
+export const SKILL_SYNC_TOOLS: Record<string, { name: string; defaultPath: string }> = {
+  claude:   { name: 'Claude Code',  defaultPath: '~/.claude/skills/' },
+  codex:    { name: 'Codex (OpenAI)', defaultPath: '~/.codex/skills/' },
+  cursor:   { name: 'Cursor',       defaultPath: '~/.cursor/skills/' },
+  copilot:  { name: 'Copilot CLI',  defaultPath: '~/.copilot/skills/' },
+};
+

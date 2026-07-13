@@ -21,6 +21,7 @@ test('show_generated_template', () => {
     notePath: null,
     source: '本地书籍',
     sourcePath: null,
+    skillPath: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

@@ -261,6 +261,7 @@ export class App {
 
   constructor() {
     this.vault = new Vault();
+    (this.vault as unknown as Record<string, unknown>).adapter = { basePath: '/mock/vault' };
     this.metadataCache = new MetadataCache();
     this.fileManager = new FileManager();
     this.workspace = new Workspace();

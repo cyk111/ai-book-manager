@@ -18,6 +18,7 @@ import { SourceScanner } from './src/services/source-scanner';
 import { createLogger, Logger } from './src/logger';
 import { BOOK_CATEGORIES } from './src/constants';
 import { generateSummary, generateTOC, generateChapterContent } from './src/ai-client';
+import { SkillService } from './src/services/skill-service';
 
 // ---- Obsidian-backed BookStore ----
 
@@ -85,6 +86,7 @@ export default class AIBookManagerPlugin extends Plugin {
   fileWatcher!: FileWatcher;
   sourceScanner!: SourceScanner;
   private bookStore!: ObsidianBookStore;
+  private activeActions = new Set<string>();
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -95,7 +97,10 @@ export default class AIBookManagerPlugin extends Plugin {
 
     // Init services (order matters: tagQueue → tagService → scanService)
     this.noteService = new NoteService(this.app, this.settings.notesFolder, this.log);
-    this.tagQueue = new TaskQueue<TagTaskData>(this.settings.maxConcurrency, 500, this.log);
+    this.tagQueue = new TaskQueue<TagTaskData>(
+      this.settings.maxConcurrency, 500, this.log,
+      () => this.saveTagQueue(),
+    );
     this.tagService = new TagService(this.app, this.settings, this.noteService, this.tagQueue, this.log, async (bookId, _oldPath, newPath) => {
       const books = await this.bookStore.loadBooks();
       for (const [, book] of books) {
@@ -262,6 +267,14 @@ export default class AIBookManagerPlugin extends Plugin {
   // ---- AI Actions ----
 
   async handleAIAction(notePath: string, action: string, chapterTitle?: string): Promise<void> {
+    // Prevent duplicate triggers for the same note+action
+    const actionKey = `${notePath}::${action}${chapterTitle ? `::${chapterTitle}` : ''}`;
+    if (this.activeActions.has(actionKey)) {
+      new Notice('⏳ 操作进行中，请等待...');
+      return;
+    }
+    this.activeActions.add(actionKey);
+
     const config = {
       baseUrl: this.settings.aiBaseUrl,
       apiKey: this.settings.aiApiKey,
@@ -270,12 +283,14 @@ export default class AIBookManagerPlugin extends Plugin {
 
     if (!config.apiKey) {
       new Notice('❌ Please configure your API key first.');
+      this.activeActions.delete(actionKey);
       return;
     }
 
     const file = this.app.vault.getFileByPath(notePath);
     if (!file) {
       new Notice('❌ Note not found.');
+      this.activeActions.delete(actionKey);
       return;
     }
 
@@ -316,14 +331,110 @@ export default class AIBookManagerPlugin extends Plugin {
         await this.noteService.appendSection(file, `📝 ${chapterTitle}`, content + '\n\n---\n');
         this.updateActiveButtons();
         new Notice(`✅ ${chapterTitle} 概要已生成`);
+
+      } else if (action === 'skill') {
+        // Find the BookRecord for this note
+        const allBooks = await this.bookStore.loadBooks();
+        let book: BookRecord | undefined;
+        for (const [, b] of allBooks) {
+          if (b.notePath === notePath) { book = b; break; }
+        }
+        if (!book) {
+          new Notice('❌ 找不到书籍记录');
+        } else if (book.format === 'md') {
+          new Notice('⚠️ 笔记来源无书籍原文，不支持生成 Skill');
+        } else if (!fs.existsSync(book.filePath)) {
+          new Notice('❌ 原始书籍文件不存在，无法生成 Skill');
+        } else {
+          // Confirm regeneration
+          let skip = false;
+          if (book.skillPath && fs.existsSync(book.skillPath)) {
+            const ok = confirm('确定要重新生成 Skill 吗？现有文件将被覆盖。');
+            if (!ok) skip = true;
+          }
+
+          if (!skip) {
+            const notice = new Notice('🧠 开始生成 Skill...', 0);
+            const skillService = new SkillService(this.app, this.settings, this.log);
+            try {
+              const result = await skillService.generateSkill(book, (progress) => {
+            switch (progress.phase) {
+              case 'extracting':
+                notice.setMessage('📖 正在提取全文...');
+                break;
+              case 'analyzing_structure':
+                notice.setMessage('🔍 正在分析章节结构...');
+                break;
+              case 'generating_chapters':
+                notice.setMessage(`📝 生成章节概要: ${progress.current}/${progress.total}`);
+                break;
+              case 'generating_glossary':
+                notice.setMessage('📚 正在生成术语表...');
+                break;
+              case 'generating_patterns':
+                notice.setMessage('🔧 正在提取模式与方法...');
+                break;
+              case 'generating_cheatsheet':
+                notice.setMessage('📋 正在创建速查表...');
+                break;
+              case 'assembling_skillmd':
+                notice.setMessage('🧩 正在合成 SKILL.md...');
+                break;
+              case 'writing_files':
+                notice.setMessage('💾 正在写入文件...');
+                break;
+              case 'complete':
+                notice.setMessage('✅ 完成!');
+                break;
+              case 'error':
+                notice.setMessage(`❌ ${progress.message}`);
+                break;
+            }
+          });
+
+          // Update book record
+          book.skillPath = result.skillPath;
+          await this.bookStore.saveBook(book);
+
+          // Build skill section content
+          const slug = skillService.generateBookSlug(book.title, book.id);
+          let skillNote = `Skill 已生成 → \`${result.skillPath}\`\n\n`;
+          skillNote += `使用方式：\`/${slug} <主题>\`\n\n`;
+          if (result.syncedTools.length > 0) {
+            skillNote += `已同步到：\n${result.syncedTools.map(t => `- ${t}`).join('\n')}\n`;
+          }
+
+          await this.noteService.appendSection(file, '🧠 AI Skill', skillNote);
+
+          this.updateActiveButtons();
+          notice.hide();
+          const toolInfo = result.syncedTools.length > 0
+            ? `，已同步 ${result.syncedTools.length} 个工具`
+            : '';
+          new Notice(`✅ Skill 已生成: ${result.chapterCount} 章, ~${result.totalTokens} tokens${toolInfo}`);
+
+        } catch (err) {
+          notice.hide();
+          new Notice(`❌ Skill 生成失败: ${String(err).slice(0, 100)}`);
+          this.log.error('Skill generation failed', { notePath, error: String(err) });
+        }
+          } // end if (!skip)
+        } // end else (valid book)
       }
     } catch (err) {
       new Notice(`❌ Failed: ${String(err).slice(0, 100)}`);
       this.log.error('AI action failed', { action, notePath, error: String(err) });
     }
+    this.activeActions.delete(actionKey);
   }
 
   // ---- Settings ----
+
+  private async saveTagQueue(): Promise<void> {
+    const data = (await this.loadData()) || {};
+    data.tagQueue = this.tagQueue.serialize();
+    await this.saveData(data);
+  }
 
   async loadSettings(): Promise<void> {
     let data = await this.loadData();
@@ -343,6 +454,8 @@ export default class AIBookManagerPlugin extends Plugin {
   async saveSettings(): Promise<void> {
     const data = (await this.loadData()) || {};
     data.settings = this.settings;
+    // Include current queue state for crash recovery
+    data.tagQueue = this.tagQueue.serialize();
     await this.saveData(data);
 
     // Start/stop file watcher based on settings + preconditions

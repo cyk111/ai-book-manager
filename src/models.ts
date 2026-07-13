@@ -30,7 +30,7 @@ export interface NoteSource {
 export type AITaskStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 /** Type of AI operation */
-export type AITaskType = 'tagging' | 'summary' | 'outline' | 'chapter-analysis';
+export type AITaskType = 'tagging' | 'summary' | 'outline' | 'chapter-analysis' | 'skill-generation';
 
 /**
  * BookRecord — one record per scanned book file.
@@ -63,6 +63,8 @@ export interface BookRecord {
   source: string;
   /** For note-based sources: vault-relative path to the original markdown file */
   sourcePath: string | null;
+  /** Path to generated Claude Code skill directory, if any */
+  skillPath: string | null;
   /** When this record was first created (ms epoch) */
   createdAt: number;
   /** When this record was last updated (ms epoch) */
@@ -140,6 +142,12 @@ export interface PluginSettings {
   watchBookDirectory: boolean;
   /** Markdown note source directories (微信读书, iBook, Kindle etc.) */
   noteSources: NoteSource[];
+  /** Skill generation mode: 'light' (SKILL.md + chapters) or 'full' (adds glossary + patterns + cheatsheet) */
+  skillMode: 'light' | 'full';
+  /** Which AI tools to sync skill symlinks to (e.g. 'claude', 'codex', 'cursor', 'copilot') */
+  skillSyncTargets: string[];
+  /** Internal: true if user has explicitly toggled autoTagging (prevents auto-enable) */
+  _autoTaggingSetByUser: boolean;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -156,6 +164,9 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   autoSyncOnStartup: false,
   watchBookDirectory: false,
   noteSources: [],
+  skillMode: 'light',
+  skillSyncTargets: [],
+  _autoTaggingSetByUser: false,
 };
 
 /**

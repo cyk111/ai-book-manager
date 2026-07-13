@@ -24,6 +24,32 @@ export const TOKEN_BUDGET = {
   CHAPTER_MAX_INPUT: 10000,
   /** Max output tokens for chapter analysis */
   CHAPTER_MAX_OUTPUT: 1200,
+
+  // ---- Skill Generation Budgets ----
+  /** Max input chars for skill structure analysis */
+  SKILL_STRUCTURE_MAX_INPUT: 30000,
+  /** Max output tokens for structure analysis */
+  SKILL_STRUCTURE_MAX_OUTPUT: 2000,
+  /** Max input chars per chapter for skill summary */
+  SKILL_CHAPTER_MAX_INPUT: 20000,
+  /** Max output tokens per chapter summary */
+  SKILL_CHAPTER_MAX_OUTPUT: 2000,
+  /** Max input chars for glossary generation */
+  SKILL_GLOSSARY_MAX_INPUT: 40000,
+  /** Max output tokens for glossary */
+  SKILL_GLOSSARY_MAX_OUTPUT: 3000,
+  /** Max input chars for patterns extraction */
+  SKILL_PATTERNS_MAX_INPUT: 40000,
+  /** Max output tokens for patterns */
+  SKILL_PATTERNS_MAX_OUTPUT: 3000,
+  /** Max input chars for cheatsheet generation */
+  SKILL_CHEATSHEET_MAX_INPUT: 30000,
+  /** Max output tokens for cheatsheet */
+  SKILL_CHEATSHEET_MAX_OUTPUT: 2500,
+  /** Max input chars for SKILL.md assembly */
+  SKILL_MD_MAX_INPUT: 50000,
+  /** Max output tokens for SKILL.md */
+  SKILL_MD_MAX_OUTPUT: 4000,
 } as const;
 
 /**

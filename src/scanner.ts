@@ -152,6 +152,7 @@ function walk(dir: string, state: WalkState): void {
         notePath: null,
         source: '本地书籍',
         sourcePath: null,
+        skillPath: null,
         createdAt: now,
         updatedAt: now,
       };

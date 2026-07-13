@@ -20,6 +20,7 @@ function makeBook(overrides: Partial<BookRecord> = {}): BookRecord {
     notePath: '📚图书库/test/test.md',
     source: '测试',
     sourcePath: null,
+    skillPath: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,

@@ -153,7 +153,8 @@ created: "${created}"
 
 <div class="ai-book-actions">
 🤖 <a href="ai-book://summary" class="ai-book-link">📝 生成简介</a> |
-<a href="ai-book://toc" class="ai-book-link">📋 生成目录</a>
+<a href="ai-book://toc" class="ai-book-link">📋 生成目录</a> |
+<a href="ai-book://skill" class="ai-book-link">🧠 生成 Skill</a>
 </div>
 
 `;
@@ -165,6 +166,7 @@ created: "${created}"
     const text = containerEl.textContent || '';
     const hasSummary = text.includes('📝 书籍简介');
     const hasTOC = text.includes('📋 本书目录');
+    const hasSkill = text.includes('🧠 AI Skill');
     const chapterMatches = text.match(/📝 第\d+章[：:][^\n]+/g) || [];
     const generatedChapters = chapterMatches.map(m => m.trim());
 
@@ -173,6 +175,7 @@ created: "${created}"
       const href = link.getAttribute('href') || '';
       if (href.includes('summary') && hasSummary) link.textContent = '🔄 重新生成简介';
       if (href.includes('toc') && hasTOC) link.textContent = '🔄 重新生成目录';
+      if (href.includes('skill') && hasSkill) link.textContent = '🔄 重新生成 Skill';
     });
 
     const tocLinks = containerEl.querySelectorAll('.ai-toc-link');
@@ -200,11 +203,13 @@ created: "${created}"
     // Create buttons immediately
     this.createActionButton(btnRow, '📝 生成简介', sourcePath, 'summary');
     this.createActionButton(btnRow, '📋 生成目录', sourcePath, 'toc');
+    this.createActionButton(btnRow, '🧠 生成 Skill', sourcePath, 'skill');
 
     // Async update button states
     this.detectExistingSections(sourcePath, [
       { section: '📝 书籍简介' },
       { section: TOC_SECTION },
+      { section: '🧠 AI Skill' },
     ]).then(states => {
       const allBtns = btnRow.querySelectorAll('button');
       if (states.get('📝 书籍简介')) {
@@ -212,6 +217,9 @@ created: "${created}"
       }
       if (states.get(TOC_SECTION)) {
         (allBtns[1] as HTMLButtonElement).textContent = '🔄 重新生成目录';
+      }
+      if (states.get('🧠 AI Skill')) {
+        (allBtns[2] as HTMLButtonElement).textContent = '🔄 重新生成 Skill';
       }
     }).catch(() => {});
   }
