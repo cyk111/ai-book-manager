@@ -44,38 +44,28 @@ export class SidebarView extends ItemView {
   render(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.style.cssText = 'padding: 8px;';
 
     // Header
-    const header = contentEl.createEl('div', { cls: 'ai-book-header' });
-    header.style.cssText = 'margin-bottom: 12px;';
-
+    const header = contentEl.createDiv({ cls: 'ai-book-sidebar-header' });
     header.createEl('h3', { text: '📚 AI Book Manager' });
 
     // Tab bar
-    const tabBar = contentEl.createEl('div', { cls: 'ai-book-tab-bar' });
-    tabBar.style.cssText = 'display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--background-modifier-border);';
-
+    const tabBar = contentEl.createDiv({ cls: 'ai-book-sidebar-tabs' });
     this.createTab(tabBar, 'books', '📖 Books');
     this.createTab(tabBar, 'progress', '📊 Progress');
     this.createTab(tabBar, 'log', '📜 Log');
 
     // Tab content
-    const tabContent = contentEl.createEl('div', { cls: 'ai-book-tab-content' });
+    const tabContent = contentEl.createDiv({ cls: 'ai-book-sidebar-content' });
     this.renderActiveTab(tabContent);
   }
 
   private createTab(container: HTMLElement, tab: TabName, label: string): void {
     const el = container.createEl('button', { text: label });
-    el.style.cssText = `
-      padding: 6px 12px;
-      border: none;
-      border-bottom: 2px solid ${this.activeTab === tab ? 'var(--interactive-accent)' : 'transparent'};
-      background: transparent;
-      color: ${this.activeTab === tab ? 'var(--text-normal)' : 'var(--text-muted)'};
-      cursor: pointer;
-      font-size: 0.85em;
-    `;
+    el.addClass('ai-book-sidebar-tab');
+    if (this.activeTab === tab) {
+      el.addClass('active');
+    }
 
     el.addEventListener('click', () => {
       this.activeTab = tab;
@@ -100,44 +90,40 @@ export class SidebarView extends ItemView {
   // ---- Books Tab ----
 
   private async renderBooksTab(container: HTMLElement): Promise<void> {
+    container.empty();
+
     // Action buttons row
-    const btnRow = container.createEl('div');
-    btnRow.style.cssText = 'display: flex; gap: 8px; margin-bottom: 12px;';
+    const btnRow = container.createDiv({ cls: 'ai-book-manager-btn-row' });
 
     const scanBtn = btnRow.createEl('button', {
       text: this.scanning ? '⏳ Scanning...' : '🔍 Full Scan',
-      cls: 'ai-book-scan-btn',
     });
-    scanBtn.style.cssText = 'flex: 1; padding: 8px; cursor: pointer;';
     scanBtn.disabled = this.scanning;
     scanBtn.addEventListener('click', () => this.runFullScan(scanBtn));
 
     const refreshBtn = btnRow.createEl('button', {
       text: '🔄 Quick Sync',
-      cls: 'ai-book-refresh-btn',
     });
-    refreshBtn.style.cssText = 'flex: 1; padding: 8px; cursor: pointer;';
     refreshBtn.disabled = this.scanning;
     refreshBtn.addEventListener('click', () => this.runQuickSync(refreshBtn));
 
     // Book list
-    const list = container.createEl('div', { cls: 'ai-book-list' });
-    list.style.cssText = 'max-height: 400px; overflow-y: auto;';
+    const list = container.createDiv({ cls: 'ai-book-sidebar-content' });
 
     try {
       const books = await this.plugin.scanService.loadExistingBooks();
       if (books.size === 0) {
         list.createEl('p', {
           text: 'No books scanned yet. Click "Full Scan" to get started.',
-          cls: 'ai-book-empty',
-        }).style.cssText = 'color: var(--text-faint); font-style: italic; text-align: center; margin-top: 24px;';
+          cls: 'ai-book-sidebar-empty',
+        });
       } else {
         const sorted = Array.from(books.values()).sort((a, b) => a.title.localeCompare(b.title));
         for (const book of sorted) {
-          const row = list.createEl('div');
-          row.style.cssText = 'padding: 4px 0; font-size: 0.85em; cursor: pointer;';
-          row.textContent = `${book.tags.length > 0 ? '🏷️' : '📄'} ${book.title}`;
-          row.addEventListener('click', () => {
+          const row = list.createDiv({ cls: 'ai-book-sidebar-book-item' });
+          const titleEl = row.createDiv({ cls: 'ai-book-sidebar-book-title' });
+          titleEl.textContent = `${book.tags.length > 0 ? '🏷️' : '📄'} ${book.title}`;
+          titleEl.addEventListener('click', () => {
             if (book.notePath) {
               const file = this.plugin.app.vault.getFileByPath(book.notePath);
               if (file) {
@@ -145,20 +131,26 @@ export class SidebarView extends ItemView {
               }
             }
           });
+          if (book.tags.length > 0) {
+            const metaRow = row.createDiv({ cls: 'ai-book-sidebar-book-meta' });
+            book.tags.forEach(tag => {
+              metaRow.createSpan({ text: tag, cls: 'ai-book-sidebar-tag' });
+            });
+          }
         }
       }
     } catch {
       list.createEl('p', {
         text: 'Failed to load books. Check your book directory setting.',
-        cls: 'ai-book-error',
-      }).style.cssText = 'color: var(--text-error); font-style: italic;';
+        cls: 'ai-book-sidebar-empty',
+      });
     }
   }
 
   // ---- Progress Tab ----
 
   private async renderProgressTab(container: HTMLElement): Promise<void> {
-    const stats = container.createEl('div', { cls: 'ai-book-stats' });
+    container.empty();
 
     try {
       const books = await this.plugin.scanService.loadExistingBooks();
@@ -169,42 +161,38 @@ export class SidebarView extends ItemView {
 
       if (cache?.lastFullScan) {
         const lastScan = new Date(cache.lastFullScan);
-        stats.createEl('p', {
+        container.createEl('p', {
           text: `Last scan: ${lastScan.toLocaleString('zh-CN')}`,
-        }).style.cssText = 'color: var(--text-muted); font-size: 0.85em;';
+          cls: 'ai-book-sidebar-stats',
+        });
       } else {
-        stats.createEl('p', { text: 'Last scan: never' })
-          .style.cssText = 'color: var(--text-muted); font-size: 0.85em;';
+        container.createEl('p', { text: 'Last scan: never', cls: 'ai-book-sidebar-stats' });
       }
 
-      stats.createEl('p', { text: `Total books: ${books.size}` })
-        .style.cssText = 'color: var(--text-muted); font-size: 0.85em;';
-      stats.createEl('p', { text: `Tagged: ${tagged}` })
-        .style.cssText = 'color: var(--text-muted); font-size: 0.85em;';
+      container.createEl('p', { text: `Total books: ${books.size}`, cls: 'ai-book-sidebar-stats' });
+      container.createEl('p', { text: `Tagged: ${tagged}`, cls: 'ai-book-sidebar-stats' });
 
       // Queue status
       if (this.plugin.tagQueue) {
         const qs = this.plugin.tagQueue.getStatus();
-        stats.createEl('p', {
+        container.createEl('p', {
           text: `Queue: ${qs.completed} done, ${qs.failed} failed, ${qs.pending} pending`,
-        }).style.cssText = 'color: var(--text-muted); font-size: 0.85em;';
+          cls: 'ai-book-sidebar-stats',
+        });
       }
     } catch {
-      stats.createEl('p', { text: 'Stats unavailable' })
-        .style.cssText = 'color: var(--text-muted); font-size: 0.85em;';
+      container.createEl('p', { text: 'Stats unavailable', cls: 'ai-book-sidebar-stats' });
     }
 
     // File watcher status
-    const watcherRow = container.createEl('div');
-    watcherRow.style.cssText = 'margin-top: 12px;';
     const watcherRunning = this.plugin.fileWatcher?.isRunning() ?? false;
-    watcherRow.createEl('p', {
+    container.createEl('p', {
       text: `📁 File watcher: ${watcherRunning ? '🟢 Active' : '⚫ Inactive'}`,
-    }).style.cssText = 'color: var(--text-muted); font-size: 0.85em;';
+      cls: 'ai-book-sidebar-stats',
+    });
 
     // Auto-tag toggle
-    const toggleRow = container.createEl('div');
-    toggleRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-top: 12px;';
+    const toggleRow = container.createDiv({ cls: 'ai-book-toggle-row' });
 
     const toggle = toggleRow.createEl('input');
     toggle.type = 'checkbox';
@@ -214,19 +202,18 @@ export class SidebarView extends ItemView {
       await this.plugin.saveSettings();
     });
 
-    toggleRow.createEl('span', { text: 'Auto AI tagging' }).style.cssText = 'font-size: 0.85em;';
+    toggleRow.createEl('span', { text: 'Auto AI tagging' });
   }
 
   // ---- Log Tab ----
 
   private renderLogTab(container: HTMLElement): void {
-    const logContainer = container.createEl('div', { cls: 'ai-book-log' });
-    logContainer.style.cssText = 'max-height: 400px; overflow-y: auto; font-family: monospace; font-size: 0.8em;';
+    container.empty();
 
-    logContainer.createEl('p', {
+    container.createEl('p', {
       text: 'No log entries yet. Logs will appear as you use the plugin.',
-      cls: 'ai-book-log-empty',
-    }).style.cssText = 'color: var(--text-faint); font-style: italic;';
+      cls: 'ai-book-sidebar-empty',
+    });
   }
 
   // ---- Scan Actions ----

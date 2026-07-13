@@ -35,7 +35,7 @@ export class AIBookSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'AI Book Manager' });
+    new Setting(containerEl).setName('AI Book Manager').setHeading();
 
     // ---- Book Directory ----
     new Setting(containerEl)
@@ -242,11 +242,11 @@ export class AIBookSettingTab extends PluginSettingTab {
     }
 
     // ---- Note Sources (微信读书, iBook, etc.) ----
-    containerEl.createEl('h3', { text: '笔记来源' });
+    new Setting(containerEl).setName('笔记来源').setHeading();
     containerEl.createEl('p', {
       text: '配置 Markdown 笔记目录。每行一个来源，格式：名称=路径。如：微信读书=微信读书笔记',
-      cls: 'setting-item-description',
-    }).style.cssText = 'margin-bottom: 8px; color: var(--text-muted); font-size: 0.85em;';
+      cls: 'ai-book-setting-desc',
+    });
 
     const sourcesText = new Setting(containerEl)
       .setName('笔记来源列表')
@@ -263,7 +263,7 @@ export class AIBookSettingTab extends PluginSettingTab {
             this.plugin.settings.noteSources = parseNoteSources(value);
             await this.plugin.saveSettings();
           });
-        text.inputEl.style.cssText = 'width: 100%; min-height: 80px;';
+        text.inputEl.addClass('ai-book-note-source-textarea');
         return text;
       });
 
@@ -287,11 +287,11 @@ export class AIBookSettingTab extends PluginSettingTab {
       );
 
     // ---- Skill Generation ----
-    containerEl.createEl('h3', { text: 'Skill 生成' });
+    new Setting(containerEl).setName('Skill 生成').setHeading();
     containerEl.createEl('p', {
       text: '将书籍编译为通用 AI Skill（Markdown 格式），存放在图书库/Skills/ 下。可同步到不同 AI 工具。',
-      cls: 'setting-item-description',
-    }).style.cssText = 'margin-bottom: 8px; color: var(--text-muted); font-size: 0.85em;';
+      cls: 'ai-book-setting-desc',
+    });
 
     new Setting(containerEl)
       .setName('Skill 生成模式')
@@ -309,11 +309,11 @@ export class AIBookSettingTab extends PluginSettingTab {
       });
 
     // ---- Tool Sync Targets ----
-    containerEl.createEl('h4', { text: '同步到 AI 工具' });
+    new Setting(containerEl).setName('同步到 AI 工具').setHeading();
     containerEl.createEl('p', {
       text: '勾选后，生成 Skill 时自动在对应工具目录下创建软链接，指向 Vault 中的 Skill 文件。',
-      cls: 'setting-item-description',
-    }).style.cssText = 'margin-bottom: 8px; color: var(--text-muted); font-size: 0.8em;';
+      cls: 'ai-book-setting-desc-sm',
+    });
 
     const syncTargets = this.plugin.settings.skillSyncTargets || [];
 

@@ -189,16 +189,13 @@ created: "${created}"
     if (containerEl.querySelector(`.${BUTTON_CONTAINER_CLASS}`)) return;
 
     const buttonContainer = containerEl.createDiv({ cls: BUTTON_CONTAINER_CLASS });
-    buttonContainer.style.cssText = 'margin: 16px 0; padding: 12px; border: 1px solid var(--background-modifier-border); border-radius: 8px;';
 
     const label = buttonContainer.createEl('div', {
       text: '🤖 AI 操作',
       cls: 'ai-book-manager-label',
     });
-    label.style.cssText = 'font-weight: 600; margin-bottom: 8px; color: var(--text-muted); font-size: 0.85em;';
 
     const btnRow = buttonContainer.createDiv({ cls: 'ai-book-manager-btn-row' });
-    btnRow.style.cssText = 'display: flex; gap: 8px; flex-wrap: wrap;';
 
     // Create buttons immediately
     this.createActionButton(btnRow, '📝 生成简介', sourcePath, 'summary');
@@ -260,12 +257,6 @@ created: "${created}"
     const btn = document.createElement('button');
     btn.textContent = label;
     btn.className = 'ai-toc-btn';
-    btn.style.cssText = `
-      padding: 2px 8px; border-radius: 3px; font-size: 0.75em;
-      border: 1px solid var(--background-modifier-border);
-      background: var(--background-secondary);
-      color: var(--text-muted); cursor: pointer;
-    `;
     btn.addEventListener('click', () => {
       btn.style.opacity = '0.6';
       document.dispatchEvent(
@@ -307,15 +298,6 @@ created: "${created}"
     const btn = container.createEl('button', { text: label });
     btn.setAttr('data-note-path', notePath);
     btn.setAttr('data-action', action);
-    btn.style.cssText = `
-      padding: 6px 12px;
-      border-radius: 4px;
-      border: 1px solid var(--background-modifier-border);
-      background: var(--background-secondary);
-      color: var(--text-normal);
-      cursor: pointer;
-      font-size: 0.85em;
-    `;
 
     btn.addEventListener('click', async () => {
       const isRegenerate = label.includes('重新生成');
