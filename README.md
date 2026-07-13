@@ -299,7 +299,7 @@ npm test -- --coverage
 
 如果这个插件对你有帮助，欢迎请我喝杯咖啡 ☕
 
-![微信赞赏码](docs/donate.png)
+![微信赞赏码](docs/donate.jpg)
 
 也欢迎在 GitHub 上给项目点个 ⭐ Star！
 
