@@ -33,6 +33,8 @@ function makeBook(overrides: Partial<BookRecord> = {}): BookRecord {
     author: null,
     tags: [],
     notePath: null,
+    source: '本地书籍',
+    sourcePath: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,

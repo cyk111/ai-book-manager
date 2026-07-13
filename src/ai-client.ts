@@ -190,7 +190,7 @@ export async function classifyBook(
       body: JSON.stringify({
         model: config.model,
         messages: [
-          { role: 'system', content: 'You are a book classifier. Output only valid JSON.' },
+          { role: 'system', content: '你是一个严谨的图书分类器。只能基于提供的书籍内容进行分类。绝不编造、猜测或给出无法验证的信息。只输出合法 JSON。' },
           { role: 'user', content: prompt },
         ] as ChatMessage[],
         temperature: 0.3,
@@ -283,7 +283,7 @@ export async function generateSummary(
       body: JSON.stringify({
         model: config.model,
         messages: [
-          { role: 'system', content: 'You write concise, insightful book summaries in Chinese.' },
+          { role: 'system', content: '你是一个严谨的书籍总结者。只能基于提供的书籍内容进行提炼，绝不编造任何信息。如果提供的内容不足以写出准确总结，明确说明信息来源不足。用中文输出。' },
           { role: 'user', content: prompt },
         ] as ChatMessage[],
         temperature: 0.5,
@@ -356,7 +356,7 @@ Rules:
       body: JSON.stringify({
         model: config.model,
         messages: [
-          { role: 'system', content: 'You generate book tables of contents. Output clean Markdown lists.' },
+          { role: 'system', content: '你是一个严谨的目录提取者。只能基于提供的书籍内容提取章节结构，绝不编造章节标题或顺序。如果内容不足以提取完整目录，只列出已确认的部分。输出干净的 Markdown 列表。' },
           { role: 'user', content: prompt },
         ],
         temperature: 0.3,
@@ -417,7 +417,7 @@ Keep it under 500 words.`;
       body: JSON.stringify({
         model: config.model,
         messages: [
-          { role: 'system', content: 'You write detailed book chapter notes in Chinese.' },
+          { role: 'system', content: '你是一个严谨的章节分析者。只能基于提供的章节内容进行分析和总结，绝不编造、臆测或补充原文中没有的信息。如果内容不足，明确指出。用中文输出。' },
           { role: 'user', content: prompt },
         ],
         temperature: 0.5,
@@ -478,7 +478,7 @@ Every book MUST get a category. Pick the best fit.`;
       body: JSON.stringify({
         model: config.model,
         messages: [
-          { role: 'system', content: 'You are a book classifier. Output only valid JSON.' },
+          { role: 'system', content: '你是一个严谨的图书分类器。只能基于提供的书籍内容进行分类。绝不编造、猜测或给出无法验证的信息。只输出合法 JSON。' },
           { role: 'user', content: prompt },
         ],
         temperature: 0.3,
@@ -549,7 +549,7 @@ Return JSON: {"category":"编程"} or {"category":null} if no match.`;
       body: JSON.stringify({
         model: config.model,
         messages: [
-          { role: 'system', content: 'You map text to categories. Output only valid JSON.' },
+          { role: 'system', content: '你是一个严谨的文本分类器。只能基于输入内容映射到给定类别，不做主观推断。只输出合法 JSON。' },
           { role: 'user', content: prompt },
         ],
         temperature: 0.1,
@@ -575,7 +575,7 @@ Return JSON: {"category":"编程"} or {"category":null} if no match.`;
 
 export async function verifyAIConnection(config: AIConfig): Promise<string> {
   if (!config.apiKey) {
-    return '❌ No DeepSeek API key configured. Set it in plugin settings.';
+    return '❌ No AI API key configured. Set it in plugin settings.';
   }
 
   const startTime = Date.now();
@@ -591,7 +591,7 @@ export async function verifyAIConnection(config: AIConfig): Promise<string> {
     const elapsed = Date.now() - startTime;
 
     const lines = [
-      '✅ DeepSeek API connection: OK',
+      '✅ AI API connection: OK',
       `⏱️  Response time: ${elapsed}ms`,
       `💰 Tokens used: ${tokenUsed}`,
       `📖 Title: ${result.title}`,
@@ -605,6 +605,6 @@ export async function verifyAIConnection(config: AIConfig): Promise<string> {
     return lines.join('\n');
   } catch (err) {
     const elapsed = Date.now() - startTime;
-    return `❌ DeepSeek API error (${elapsed}ms): ${String(err)}`;
+    return `❌ AI API error (${elapsed}ms): ${String(err)}`;
   }
 }

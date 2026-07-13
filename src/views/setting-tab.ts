@@ -2,8 +2,25 @@
 // Settings Tab — plugin configuration UI
 // ============================================================
 
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import type AIBookManagerPlugin from '../../main';
+import { NoteSource, AI_PROVIDER_CONFIG } from '../models';
+
+/** Parse "name=path" lines into NoteSource array */
+function parseNoteSources(text: string): NoteSource[] {
+  return text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.includes('='))
+    .map(line => {
+      const idx = line.indexOf('=');
+      return {
+        name: line.slice(0, idx).trim(),
+        path: line.slice(idx + 1).trim(),
+      };
+    })
+    .filter(s => s.name && s.path);
+}
 
 export class AIBookSettingTab extends PluginSettingTab {
   plugin: AIBookManagerPlugin;
@@ -50,44 +67,68 @@ export class AIBookSettingTab extends PluginSettingTab {
           }),
       );
 
-    // ---- DeepSeek API Key ----
+    // ---- AI Provider ----
+    const providerSetting = new Setting(containerEl)
+      .setName('AI 模型')
+      .setDesc('选择 AI 服务提供商')
+      .addDropdown(dropdown => {
+        dropdown
+          .addOption('deepseek', 'DeepSeek')
+          .addOption('openai', 'OpenAI')
+          .addOption('qwen', '通义千问')
+          .setValue(this.plugin.settings.aiProvider)
+          .onChange(async value => {
+            const provider = value as 'deepseek' | 'openai' | 'qwen';
+            this.plugin.settings.aiProvider = provider;
+            // Update base URL and model to provider defaults
+            this.plugin.settings.aiBaseUrl = AI_PROVIDER_CONFIG[provider].baseUrl;
+            this.plugin.settings.aiModel = AI_PROVIDER_CONFIG[provider].defaultModel;
+            await this.plugin.saveSettings();
+            // Re-render to update placeholder hints
+            this.display();
+          });
+        return dropdown;
+      });
+
+    // ---- AI API Key ----
+    const providerCfg = AI_PROVIDER_CONFIG[this.plugin.settings.aiProvider];
     new Setting(containerEl)
-      .setName('DeepSeek API key')
-      .setDesc('Your DeepSeek API key (stored locally)')
+      .setName('API Key')
+      .setDesc(`输入 ${providerCfg.name} 的 API Key（本地存储）`)
       .addText(text =>
         text
-          .setPlaceholder('sk-...')
-          .setValue(this.plugin.settings.deepseekApiKey)
+          .setPlaceholder(providerCfg.keyHint)
+          .setValue(this.plugin.settings.aiApiKey)
           .onChange(async value => {
-            this.plugin.settings.deepseekApiKey = value;
+            this.plugin.settings.aiApiKey = value;
             await this.plugin.saveSettings();
           }),
       );
 
-    // ---- DeepSeek API URL ----
+    // ---- AI Base URL ----
     new Setting(containerEl)
-      .setName('DeepSeek API URL')
-      .setDesc('API endpoint base URL')
+      .setName('API URL')
+      .setDesc('API 端点地址（切换模型时自动更新，也可手动修改）')
       .addText(text =>
         text
-          .setPlaceholder('https://api.deepseek.com/v1')
-          .setValue(this.plugin.settings.deepseekBaseUrl)
+          .setPlaceholder(providerCfg.baseUrl)
+          .setValue(this.plugin.settings.aiBaseUrl)
           .onChange(async value => {
-            this.plugin.settings.deepseekBaseUrl = value;
+            this.plugin.settings.aiBaseUrl = value;
             await this.plugin.saveSettings();
           }),
       );
 
     // ---- Model Name ----
     new Setting(containerEl)
-      .setName('Model')
-      .setDesc('DeepSeek model name (deepseek-chat or deepseek-reasoner)')
+      .setName('模型名称')
+      .setDesc('模型 ID（切换模型时自动更新，也可手动修改）')
       .addText(text =>
         text
-          .setPlaceholder('deepseek-chat')
-          .setValue(this.plugin.settings.deepseekModel)
+          .setPlaceholder(providerCfg.defaultModel)
+          .setValue(this.plugin.settings.aiModel)
           .onChange(async value => {
-            this.plugin.settings.deepseekModel = value;
+            this.plugin.settings.aiModel = value;
             await this.plugin.saveSettings();
           }),
       );
@@ -191,5 +232,50 @@ export class AIBookSettingTab extends PluginSettingTab {
       watcherSetting.settingEl.style.opacity = '0.5';
       watcherSetting.setDisabled(true);
     }
+
+    // ---- Note Sources (微信读书, iBook, etc.) ----
+    containerEl.createEl('h3', { text: '笔记来源' });
+    containerEl.createEl('p', {
+      text: '配置 Markdown 笔记目录。每行一个来源，格式：名称=路径。如：微信读书=微信读书笔记',
+      cls: 'setting-item-description',
+    }).style.cssText = 'margin-bottom: 8px; color: var(--text-muted); font-size: 0.85em;';
+
+    const sourcesText = new Setting(containerEl)
+      .setName('笔记来源列表')
+      .setDesc('格式：来源名称=vault内路径，每行一个')
+      .addTextArea(text => {
+        text
+          .setPlaceholder('微信读书=微信读书笔记\niBook=ibooks-highlights\nKindle=Kindle笔记')
+          .setValue(
+            this.plugin.settings.noteSources
+              .map(s => `${s.name}=${s.path}`)
+              .join('\n')
+          )
+          .onChange(async value => {
+            this.plugin.settings.noteSources = parseNoteSources(value);
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.style.cssText = 'width: 100%; min-height: 80px;';
+        return text;
+      });
+
+    // Add a "Scan Now" button for note sources
+    new Setting(containerEl)
+      .setName('扫描笔记来源')
+      .setDesc('立即扫描所有配置的笔记来源目录，为新书创建索引卡')
+      .addButton(btn =>
+        btn
+          .setButtonText('立即扫描')
+          .onClick(async () => {
+            if (!this.plugin.sourceScanner) {
+              new Notice('❌ 插件未初始化');
+              return;
+            }
+            new Notice('🔍 正在扫描笔记来源...');
+            const results = await this.plugin.sourceScanner.scanAllSources();
+            const total = results.reduce((sum, r) => sum + r.newBooks, 0);
+            new Notice(`✅ 扫描完成：${total} 本新书`);
+          }),
+      );
   }
 }

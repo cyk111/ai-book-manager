@@ -3,7 +3,28 @@
 // ============================================================
 
 /** Supported book file formats */
-export type BookFormat = 'pdf' | 'epub' | 'txt';
+export type BookFormat = 'pdf' | 'epub' | 'txt' | 'md';
+
+/** Source type — where a book record originated */
+export type BookSourceType = 'local' | 'weread' | 'ibook' | 'custom';
+
+/** Supported AI providers */
+export type AIProvider = 'openai' | 'deepseek' | 'qwen';
+
+/** Preset configs for each provider */
+export const AI_PROVIDER_CONFIG: Record<AIProvider, { name: string; baseUrl: string; defaultModel: string; keyHint: string }> = {
+  openai:   { name: 'OpenAI',   baseUrl: 'https://api.openai.com/v1',                     defaultModel: 'gpt-4o',       keyHint: 'sk-...' },
+  deepseek: { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1',                   defaultModel: 'deepseek-chat', keyHint: 'sk-...' },
+  qwen:     { name: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-plus',    keyHint: 'sk-...' },
+};
+
+/** A configured markdown note source directory */
+export interface NoteSource {
+  /** Display name, also used as subfolder name (e.g. "微信读书") */
+  name: string;
+  /** Vault-relative path to the markdown notes directory */
+  path: string;
+}
 
 /** Status of an AI task */
 export type AITaskStatus = 'pending' | 'running' | 'completed' | 'failed';
@@ -38,6 +59,10 @@ export interface BookRecord {
   tags: string[];
   /** Vault-relative path to the generated Markdown note */
   notePath: string | null;
+  /** Which source this book came from (e.g. "本地书籍", "微信读书") */
+  source: string;
+  /** For note-based sources: vault-relative path to the original markdown file */
+  sourcePath: string | null;
   /** When this record was first created (ms epoch) */
   createdAt: number;
   /** When this record was last updated (ms epoch) */
@@ -93,12 +118,14 @@ export interface PluginSettings {
   bookDirectory: string;
   /** File extensions to include, with dot: ['.pdf', '.epub', '.txt'] */
   supportedFormats: string[];
-  /** DeepSeek API key */
-  deepseekApiKey: string;
-  /** DeepSeek API base URL */
-  deepseekBaseUrl: string;
-  /** DeepSeek model name */
-  deepseekModel: string;
+  /** AI provider selection */
+  aiProvider: AIProvider;
+  /** AI API key (provider-agnostic) */
+  aiApiKey: string;
+  /** AI API base URL (auto-set per provider, user can override) */
+  aiBaseUrl: string;
+  /** AI model name (auto-set per provider, user can override) */
+  aiModel: string;
   /** Automatically tag books after scanning */
   autoTagging: boolean;
   /** Vault folder for generated notes */
@@ -111,20 +138,24 @@ export interface PluginSettings {
   autoSyncOnStartup: boolean;
   /** Watch book directory for changes in real-time (fs.watch) */
   watchBookDirectory: boolean;
+  /** Markdown note source directories (微信读书, iBook, Kindle etc.) */
+  noteSources: NoteSource[];
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   bookDirectory: '',
   supportedFormats: ['.pdf', '.epub', '.txt'],
-  deepseekApiKey: '',
-  deepseekBaseUrl: 'https://api.deepseek.com/v1',
-  deepseekModel: 'deepseek-chat',
+  aiProvider: 'deepseek',
+  aiApiKey: '',
+  aiBaseUrl: 'https://api.deepseek.com/v1',
+  aiModel: 'deepseek-chat',
   autoTagging: false,
   notesFolder: '📚图书库',
   maxScanPages: 3,
   maxConcurrency: 1,
   autoSyncOnStartup: false,
   watchBookDirectory: false,
+  noteSources: [],
 };
 
 /**

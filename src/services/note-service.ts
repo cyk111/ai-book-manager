@@ -330,11 +330,16 @@ created: "${created}"
 
   // ---- Category Navigation Pages ----
 
-  async updateCategoryNav(category: string, bookTitle: string): Promise<void> {
-    const navPath = `${this.notesFolder}/${category}/${category}.md`;
+  /**
+   * Update the category navigation page.
+   * @param basePath — the source subfolder (e.g. "📚图书库/本地书籍")
+   * @param category — the category name (e.g. "科幻")
+   * @param bookTitle — the book title for the wiki link
+   */
+  async updateCategoryNav(basePath: string, category: string, bookTitle: string): Promise<void> {
+    const catFolder = `${basePath}/${category}`;
+    const navPath = `${catFolder}/${category}.md`;
     const bookLink = `- [[${bookTitle}]]`;
-
-    const catFolder = `${this.notesFolder}/${category}`;
     if (!this.app.vault.getFolderByPath(catFolder)) {
       await this.app.vault.createFolder(catFolder);
     }
@@ -350,7 +355,7 @@ created: "${created}"
     } else {
       const content = `---
 tags:
-  - _分类/${category}
+  - ${category}
 ---
 
 # ${category}

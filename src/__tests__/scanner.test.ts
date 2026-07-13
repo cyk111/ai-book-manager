@@ -273,6 +273,8 @@ describe('Scanner', () => {
         author: null,
         tags: [],
         notePath: null,
+        source: '本地书籍',
+        sourcePath: null,
         createdAt: 1000,
         updatedAt: 1000,
       });

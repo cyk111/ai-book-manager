@@ -186,6 +186,19 @@ poc-verify.ts          Standalone POC runner (no Obsidian needed)
 
 ---
 
+## Debugging Rules
+
+**When fixing a bug, do not cut corners:**
+
+1. **Find the root cause, not the symptom** — Trace the full call chain. Every bug has a specific line or logic flaw that caused it. "It works now" without understanding why is unacceptable.
+2. **Fix it completely** — A partial fix that leaves edge cases broken is worse than no fix. Consider all scenarios and code paths affected by the change.
+3. **Tests must pass** — Run the full test suite. If a test breaks, fix it. Never skip or disable a failing test to "get the build green".
+4. **Ask when uncertain** — If there are multiple possible fixes or you're unsure about the correct approach, pause and ask the user before proceeding. Guessing wastes time and creates new bugs.
+5. **Don't break existing functionality** — A bug fix for one thing must not regress another. Check related features manually and via tests.
+6. **Be thorough** — Fixing the same bug twice because the first attempt was shallow is unacceptable. Take the time to get it right the first time.
+
+---
+
 ## When Writing Code in This Repository
 
 Before writing any code, check:

@@ -19,6 +19,8 @@ test('show_generated_template', () => {
     author: '刘慈欣',
     tags: ['科幻', '外星文明', '物理学'],
     notePath: null,
+    source: '本地书籍',
+    sourcePath: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

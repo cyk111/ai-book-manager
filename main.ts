@@ -14,6 +14,7 @@ import { NoteService } from './src/services/note-service';
 import { TagService, TagTaskData } from './src/services/tag-service';
 import { TaskQueue, QueueTask } from './src/services/queue-service';
 import { FileWatcher, createFileWatcher, WatchEvent } from './src/services/file-watcher';
+import { SourceScanner } from './src/services/source-scanner';
 import { createLogger, Logger } from './src/logger';
 import { BOOK_CATEGORIES } from './src/constants';
 import { generateSummary, generateTOC, generateChapterContent } from './src/ai-client';
@@ -82,6 +83,7 @@ export default class AIBookManagerPlugin extends Plugin {
   tagService!: TagService;
   tagQueue!: TaskQueue<TagTaskData>;
   fileWatcher!: FileWatcher;
+  sourceScanner!: SourceScanner;
   private bookStore!: ObsidianBookStore;
 
   async onload(): Promise<void> {
@@ -94,8 +96,18 @@ export default class AIBookManagerPlugin extends Plugin {
     // Init services (order matters: tagQueue → tagService → scanService)
     this.noteService = new NoteService(this.app, this.settings.notesFolder, this.log);
     this.tagQueue = new TaskQueue<TagTaskData>(this.settings.maxConcurrency, 500, this.log);
-    this.tagService = new TagService(this.app, this.settings, this.noteService, this.tagQueue, this.log);
+    this.tagService = new TagService(this.app, this.settings, this.noteService, this.tagQueue, this.log, async (bookId, _oldPath, newPath) => {
+      const books = await this.bookStore.loadBooks();
+      for (const [, book] of books) {
+        if (book.id === bookId) {
+          book.notePath = newPath;
+          await this.bookStore.saveBook(book);
+          break;
+        }
+      }
+    });
     this.scanService = new ScanService(this.app, this.settings, this.tagService, this.log, this.bookStore);
+    this.sourceScanner = new SourceScanner(this.app, this.settings, this.noteService, this.tagService, this.bookStore, this.log);
 
     // Restore persisted queue state
     const savedData = (await this.loadData()) || {};
@@ -124,6 +136,21 @@ export default class AIBookManagerPlugin extends Plugin {
       id: 'test-ai-connection',
       name: 'Test AI connection',
       callback: () => testAICmd.execute(),
+    });
+
+    this.addCommand({
+      id: 'scan-note-sources',
+      name: 'Scan note sources (微信读书/iBook等)',
+      callback: async () => {
+        if (!this.settings.noteSources.length) {
+          new Notice('⚠️ 请先在设置中配置笔记来源目录');
+          return;
+        }
+        new Notice('🔍 正在扫描笔记来源...');
+        const results = await this.sourceScanner.scanAllSources();
+        const totalNew = results.reduce((s, r) => s + r.newBooks, 0);
+        new Notice(`✅ 笔记来源扫描完成：${totalNew} 新书`);
+      },
     });
 
     // Handle ai-book:// link clicks
@@ -186,6 +213,21 @@ export default class AIBookManagerPlugin extends Plugin {
       });
     }
 
+    // ---- Startup Note Source Scan (only if auto-sync enabled) ----
+    if (this.settings.noteSources.length > 0 && this.settings.autoSyncOnStartup) {
+      setTimeout(() => {
+        this.sourceScanner.scanAllSources().then(results => {
+          const totalNew = results.reduce((s, r) => s + r.newBooks, 0);
+          if (totalNew > 0) {
+            new Notice(`📝 Note sources synced: ${totalNew} new book(s).`);
+          }
+          this.log.info('Startup note source scan complete', { totalNew });
+        }).catch(err => {
+          this.log.warn('Startup note source scan failed', { error: String(err) });
+        });
+      }, 3000);
+    }
+
     // ---- File Watcher (strict precondition checks) ----
     if (this.settings.watchBookDirectory && this.canAutoSync()) {
       this.startFileWatcher();
@@ -221,9 +263,9 @@ export default class AIBookManagerPlugin extends Plugin {
 
   async handleAIAction(notePath: string, action: string, chapterTitle?: string): Promise<void> {
     const config = {
-      baseUrl: this.settings.deepseekBaseUrl,
-      apiKey: this.settings.deepseekApiKey,
-      model: this.settings.deepseekModel,
+      baseUrl: this.settings.aiBaseUrl,
+      apiKey: this.settings.aiApiKey,
+      model: this.settings.aiModel,
     };
 
     if (!config.apiKey) {
@@ -284,8 +326,18 @@ export default class AIBookManagerPlugin extends Plugin {
   // ---- Settings ----
 
   async loadSettings(): Promise<void> {
-    const data = await this.loadData();
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, data?.settings || data);
+    let data = await this.loadData();
+    const raw = data?.settings || data || {};
+
+    // Migrate old field names to new
+    if ((raw as any).deepseekApiKey && !raw.aiApiKey) {
+      raw.aiApiKey = (raw as any).deepseekApiKey;
+      raw.aiBaseUrl = (raw as any).deepseekBaseUrl || 'https://api.deepseek.com/v1';
+      raw.aiModel = (raw as any).deepseekModel || 'deepseek-chat';
+      raw.aiProvider = 'deepseek';
+    }
+
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
   }
 
   async saveSettings(): Promise<void> {

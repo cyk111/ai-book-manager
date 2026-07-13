@@ -150,6 +150,8 @@ function walk(dir: string, state: WalkState): void {
         author: null,
         tags: [],
         notePath: null,
+        source: '本地书籍',
+        sourcePath: null,
         createdAt: now,
         updatedAt: now,
       };

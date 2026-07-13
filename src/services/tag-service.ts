@@ -24,12 +24,16 @@ export interface TagTaskData {
 
 // ---- Tag Service ----
 
+/** Called when a note is moved to a category directory. */
+export type NoteMovedCallback = (bookId: string, oldPath: string, newPath: string) => Promise<void>;
+
 export class TagService {
   private app: App;
   private settings: PluginSettings;
   private noteService: NoteService;
   private queue: TaskQueue<TagTaskData>;
   private log: Logger;
+  private onNoteMoved: NoteMovedCallback | null;
 
   constructor(
     app: App,
@@ -37,12 +41,14 @@ export class TagService {
     noteService: NoteService,
     queue: TaskQueue<TagTaskData>,
     logger: Logger = NOOP_LOGGER,
+    onNoteMoved?: NoteMovedCallback,
   ) {
     this.app = app;
     this.settings = settings;
     this.noteService = noteService;
     this.queue = queue;
     this.log = logger;
+    this.onNoteMoved = onNoteMoved || null;
 
     this.queue.setHandler(async (task) => this.processTagTask(task));
   }
@@ -51,14 +57,14 @@ export class TagService {
 
   getAIConfig(): AIConfig {
     return {
-      baseUrl: this.settings.deepseekBaseUrl,
-      apiKey: this.settings.deepseekApiKey,
-      model: this.settings.deepseekModel,
+      baseUrl: this.settings.aiBaseUrl,
+      apiKey: this.settings.aiApiKey,
+      model: this.settings.aiModel,
     };
   }
 
   enqueueBook(book: BookRecord, textSnippet: string, notePath: string, directoryHint?: string): void {
-    if (!this.settings.deepseekApiKey) {
+    if (!this.settings.aiApiKey) {
       this.log.warn('No API key configured, skipping tagging', { bookId: book.id });
       return;
     }
@@ -158,13 +164,24 @@ export class TagService {
         }
       });
 
-      // Move note to category subdirectory
+      // Move note to category subdirectory (within same source subfolder)
       if (result.category) {
         const fileName = notePath.split('/').pop() || '';
-        const categoryFolder = `${this.settings.notesFolder}/${result.category}`;
+        // Derive base from current location, not from settings.notesFolder
+        // e.g. "📚图书库/本地书籍/三体.md" → "📚图书库/本地书籍/科幻/三体.md"
+        const currentDir = notePath.substring(0, notePath.lastIndexOf('/'));
+        const categoryFolder = `${currentDir}/${result.category}`;
         const newPath = `${categoryFolder}/${fileName}`;
         try {
+          // Ensure category folder exists before moving
+          if (!this.app.vault.getFolderByPath(categoryFolder)) {
+            await this.app.vault.createFolder(categoryFolder);
+          }
           await this.app.vault.rename(file, newPath);
+          // Update BookStore notePath so future scans don't re-create
+          if (this.onNoteMoved) {
+            await this.onNoteMoved(bookId, notePath, newPath);
+          }
           // Add category link to book note body
           const movedFile = this.app.vault.getFileByPath(newPath);
           if (movedFile) {
@@ -174,8 +191,9 @@ export class TagService {
               await this.app.vault.modify(movedFile, currentContent.trimEnd() + `\n${linkLine}\n`);
             }
           }
-          // Update the category navigation page
-          await this.noteService.updateCategoryNav(result.category, title);
+          // Update the category navigation page (under source subfolder)
+          const basePath = newPath.substring(0, newPath.lastIndexOf(`/${result.category}`));
+          await this.noteService.updateCategoryNav(basePath, result.category, title);
           this.log.info('Note moved to category', { from: notePath, to: newPath, category: result.category });
           new Notice(`🏷️ ${title}: ${result.tags.join(', ')}  → ${result.category}/`);
         } catch (err) {

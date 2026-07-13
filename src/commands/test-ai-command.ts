@@ -16,18 +16,18 @@ export class TestAICommand {
   }
 
   async execute(): Promise<void> {
-    if (!this.settings.deepseekApiKey) {
-      new Notice('❌ Please configure your DeepSeek API key in settings first.');
+    if (!this.settings.aiApiKey) {
+      new Notice('❌ Please configure your AI API key in settings first.');
       return;
     }
 
-    const notice = new Notice('🤖 Testing DeepSeek connection...', 0);
+    const notice = new Notice('🤖 Testing AI connection...', 0);
 
     try {
       const result = await verifyAIConnection({
-        baseUrl: this.settings.deepseekBaseUrl,
-        apiKey: this.settings.deepseekApiKey,
-        model: this.settings.deepseekModel,
+        baseUrl: this.settings.aiBaseUrl,
+        apiKey: this.settings.aiApiKey,
+        model: this.settings.aiModel,
       });
 
       notice.hide();

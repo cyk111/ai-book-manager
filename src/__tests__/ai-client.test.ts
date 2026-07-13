@@ -338,7 +338,7 @@ describe('verifyAIConnection', () => {
     });
 
     expect(result).toContain('❌');
-    expect(result).toContain('No DeepSeek API key');
+    expect(result).toContain('No AI API key');
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -348,7 +348,7 @@ describe('verifyAIConnection', () => {
     const result = await verifyAIConnection(config);
 
     expect(result).toContain('✅');
-    expect(result).toContain('DeepSeek API connection: OK');
+    expect(result).toContain('AI API connection: OK');
     expect(result).toContain('Response time:');
     expect(result).toContain('Tokens used:');
     expect(result).toContain('Estimated cost:');
@@ -360,7 +360,7 @@ describe('verifyAIConnection', () => {
     const result = await verifyAIConnection(config);
 
     expect(result).toContain('❌');
-    expect(result).toContain('DeepSeek API error');
+    expect(result).toContain('AI API error');
   });
 });
 

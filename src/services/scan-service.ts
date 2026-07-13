@@ -87,7 +87,9 @@ export class ScanService {
   ) {
     this.app = app;
     this.settings = settings;
-    this.noteService = new NoteService(app, settings.notesFolder, logger);
+    // File-scanned books go under 📚图书库/本地书籍/
+    const localFolder = `${settings.notesFolder}/本地书籍`;
+    this.noteService = new NoteService(app, localFolder, logger);
     this.tagService = tagService || null;
     this.bookStore = bookStore || new MemoryBookStore();
     this.log = logger || createLogger('scan-service');
