@@ -35,8 +35,6 @@ export class AIBookSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    new Setting(containerEl).setName('General').setHeading();
-
     // ---- Book Directory ----
     new Setting(containerEl)
       .setName('Book directory')
