@@ -16,7 +16,11 @@
     "ai"
   ],
   "author": "cyk111",
-  "license": "MIT",
+  "license": "CC-BY-NC-4.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyk111/ai-book-manager.git"
+  },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
     "@types/jest": "^30.0.0",

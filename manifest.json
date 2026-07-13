@@ -3,8 +3,10 @@
   "name": "AI Book Manager",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "AI-powered book library manager - scan local books, auto classify with tags, generate summaries and knowledge graphs",
+  "description": "AI-powered book library manager with auto-tagging, knowledge graphs, and multi-tool skill generation.",
   "author": "cyk111",
-  "authorUrl": "",
-  "isDesktopOnly": true
+  "authorUrl": "https://github.com/cyk111",
+  "fundingUrl": "https://github.com/sponsors/cyk111",
+  "isDesktopOnly": true,
+  "repo": "cyk111/ai-book-manager"
 }
