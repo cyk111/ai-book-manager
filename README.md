@@ -1,11 +1,36 @@
-# AI Book Manager — Obsidian 智能图书管理插件
+# AI Book Manager — Obsidian Book Library Plugin
 
 [![GitHub release](https://img.shields.io/github/v/release/cyk111/ai-book-manager)](https://github.com/cyk111/ai-book-manager/releases)
 [![Tests](https://img.shields.io/badge/tests-205%20passed-brightgreen)](https://github.com/cyk111/ai-book-manager/actions)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-blue)](LICENSE)
 [![Obsidian](https://img.shields.io/badge/Obsidian-1.5.0%2B-%23483699)](https://obsidian.md)
 
-> 🤖 AI 驱动的 Obsidian 图书管理插件 —— 扫描本地书籍、自动 AI 分类打标、生成知识图谱、一键编译 AI Skill，让每一本书都成为你的第二大脑。
+> 🤖 AI-powered book library manager for Obsidian — scan local books, auto-classify with AI tags, build knowledge graphs, and compile books into reusable AI skills. Turn every book into your second brain.
+
+> 中文文档请往下滚动 | Chinese documentation below
+>
+> AI 驱动的 Obsidian 图书管理插件 —— 扫描本地书籍、自动 AI 分类打标、生成知识图谱、一键编译 AI Skill。
+
+## What is AI Book Manager?
+
+AI Book Manager scans your local book directory (PDF, EPUB, TXT), uses AI to automatically classify and tag each book, generates structured Markdown notes with wikilinks, and builds a knowledge graph in Obsidian. It also integrates reading notes from WeChat Read and Apple Books, and can compile any book into a reusable AI skill for Claude Code, Codex, Cursor, and Copilot CLI.
+
+### Key Features
+
+- 📂 **Multi-format book scanning** — PDF, EPUB, TXT with recursive directory walking and SHA256 dedup
+- 🏷️ **AI auto-classification** — DeepSeek, OpenAI, or Qwen generate 3 tags + 1 category per book
+- 📚 **Multi-source integration** — WeChat Read and Apple Books highlight notes as index cards with cross-referencing
+- 🧠 **One-click AI Skill generation** — Compile books into structured skills for Claude Code, Codex, Cursor, Copilot CLI
+- 🗺️ **Knowledge graph** — Obsidian native graph + wikilinks show book connections
+- ⚡ **Lazy AI** — Summaries, TOC, and chapter analysis generated on demand to save tokens
+- 🔄 **Hybrid sync** — Optional auto-sync on startup + real-time file watching
+- 🌐 **Multi-model support** — OpenAI, DeepSeek, Qwen, or any OpenAI-compatible API
+
+---
+
+# 中文文档
+
+## AI Book Manager — Obsidian 智能图书管理插件
 
 ## 📖 目录
 
