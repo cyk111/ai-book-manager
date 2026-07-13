@@ -35,7 +35,7 @@ export class AIBookSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    new Setting(containerEl).setName('AI Book Manager').setHeading();
+    new Setting(containerEl).setName('General').setHeading();
 
     // ---- Book Directory ----
     new Setting(containerEl)
@@ -237,7 +237,7 @@ export class AIBookSettingTab extends PluginSettingTab {
 
     // Grey out the entire row when auto-sync is off
     if (!this.plugin.settings.autoSyncOnStartup) {
-      watcherSetting.settingEl.style.opacity = '0.5';
+      watcherSetting.settingEl.addClass('ai-book-setting-disabled');
       watcherSetting.setDisabled(true);
     }
 

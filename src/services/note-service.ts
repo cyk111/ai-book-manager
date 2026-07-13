@@ -258,7 +258,8 @@ created: "${created}"
     btn.textContent = label;
     btn.className = 'ai-toc-btn';
     btn.addEventListener('click', () => {
-      btn.style.opacity = '0.6';
+      btn.setAttribute('disabled', 'true');
+      btn.addClass('ai-book-btn-loading');
       document.dispatchEvent(
         new CustomEvent('ai-book-action', {
           detail: { notePath, action, chapterTitle },
@@ -308,7 +309,7 @@ created: "${created}"
 
       btn.setAttr('disabled', 'true');
       btn.setText('⏳ 生成中...');
-      btn.style.opacity = '0.6';
+      btn.addClass('ai-book-btn-loading');
 
       document.dispatchEvent(
         new CustomEvent('ai-book-action', {

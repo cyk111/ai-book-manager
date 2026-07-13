@@ -1,8 +1,8 @@
 {
   "id": "ai-book-manager",
   "name": "AI Book Manager",
-  "version": "0.1.1",
-  "minAppVersion": "1.7.0",
+  "version": "0.1.2",
+  "minAppVersion": "1.8.0",
   "description": "AI-powered book library manager with auto-tagging, knowledge graphs, and multi-tool skill generation.",
   "author": "cyk111",
   "authorUrl": "https://github.com/cyk111",

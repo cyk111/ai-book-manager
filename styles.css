@@ -167,6 +167,17 @@
   min-height: 80px;
 }
 
+/* ---- Loading / Disabled States ---- */
+
+.ai-book-btn-loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.ai-book-setting-disabled {
+  opacity: 0.5;
+}
+
 /* ---- Setting Toggle Row ---- */
 
 .ai-book-toggle-row {
