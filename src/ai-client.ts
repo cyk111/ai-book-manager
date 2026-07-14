@@ -363,6 +363,10 @@ Rules:
         max_tokens: TOKEN_BUDGET.OUTLINE_MAX_OUTPUT,
       }),
     },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS,
+    logger,
   );
   if (!response.ok) throw new AIError(`TOC generation failed (${response.status})`, cid);
   const data = (await response.json()) as {
@@ -424,6 +428,10 @@ Keep it under 500 words.`;
         max_tokens: TOKEN_BUDGET.CHAPTER_MAX_OUTPUT,
       }),
     },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS,
+    logger,
   );
   if (!response.ok) throw new AIError(`Chapter generation failed (${response.status})`, cid);
   const data = (await response.json()) as {
@@ -1106,6 +1114,10 @@ Every book MUST get a category. Pick the best fit.`;
         response_format: { type: 'json_object' },
       }),
     },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS * 2, // longer timeout for batch operations
+    logger,
   );
 
   if (!response.ok) {
@@ -1120,7 +1132,18 @@ Every book MUST get a category. Pick the best fit.`;
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new AIError('Batch classify empty response', cid);
 
-  const parsed = JSON.parse(content) as { results: Array<{ index: number; category: string }> };
+  let parsed: { results: Array<{ index: number; category: string }> };
+  try {
+    parsed = JSON.parse(content) as { results: Array<{ index: number; category: string }> };
+  } catch (err) {
+    logger.warn('Batch classify: invalid JSON from API, attempting partial recovery', {
+      contentPreview: content.slice(0, 200),
+      error: String(err),
+    });
+    // Fallback: return empty map — individual books can be re-classified
+    return new Map<string, string>();
+  }
+
   const result = new Map<string, string>();
 
   for (const item of parsed.results || []) {
@@ -1177,6 +1200,10 @@ Return JSON: {"category":"编程"} or {"category":null} if no match.`;
         response_format: { type: 'json_object' },
       }),
     },
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_BASE_DELAY_MS,
+    DEFAULT_TIMEOUT_MS,
+    logger,
   );
 
   if (!response.ok) return null;

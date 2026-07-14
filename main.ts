@@ -76,6 +76,9 @@ class ObsidianBookStore implements BookStore {
 
 // ---- Plugin ----
 
+/** Whitelist of valid AI actions — prevents arbitrary event injection */
+const VALID_AI_ACTIONS = new Set(['summary', 'toc', 'chapter-overview', 'skill']);
+
 export default class AIBookManagerPlugin extends Plugin {
   settings!: PluginSettings;
   private log!: Logger;
@@ -87,16 +90,21 @@ export default class AIBookManagerPlugin extends Plugin {
   sourceScanner!: SourceScanner;
   private bookStore!: ObsidianBookStore;
   private activeActions = new Set<string>();
+  /** Random token to validate CustomEvent origins — shared with NoteService buttons */
+  private _eventToken!: string;
 
   async onload(): Promise<void> {
     await this.loadSettings();
     this.log = createLogger('plugin');
 
+    // Generate validation token for CustomEvent origin checks
+    this._eventToken = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
     // Init BookStore
     this.bookStore = new ObsidianBookStore(this);
 
     // Init services (order matters: tagQueue → tagService → scanService)
-    this.noteService = new NoteService(this.app, this.settings.notesFolder, this.log);
+    this.noteService = new NoteService(this.app, this.settings.notesFolder, this.log, this._eventToken);
     this.tagQueue = new TaskQueue<TagTaskData>(
       this.settings.maxConcurrency, 500, this.log,
       () => this.saveTagQueue(),
@@ -176,6 +184,12 @@ export default class AIBookManagerPlugin extends Plugin {
       const href = target.getAttribute('href') || '';
       const action = href.replace('ai-book://', '');
 
+      // Validate action is in allowlist
+      if (!VALID_AI_ACTIONS.has(action)) {
+        this.log.warn('Blocked unknown ai-book:// action', { action });
+        return;
+      }
+
       const activeFile = this.app.workspace.getActiveFile();
       if (!activeFile) return;
 
@@ -187,8 +201,20 @@ export default class AIBookManagerPlugin extends Plugin {
       this.handleAIAction(activeFile.path, action, chapterTitle);
     });
 
-    // Listen for AI action events from note buttons
+    // Listen for AI action events from note buttons (validated by shared token)
     document.addEventListener('ai-book-action', ((e: CustomEvent) => {
+      // Validate event origin — must carry the shared token
+      if (!e.detail?._token || e.detail._token !== this._eventToken) {
+        this.log.warn('Blocked unauthorized ai-book-action event', {
+          hasToken: !!e.detail?._token,
+        });
+        return;
+      }
+      // Validate action is in allowlist
+      if (!VALID_AI_ACTIONS.has(e.detail.action)) {
+        this.log.warn('Blocked unknown AI action', { action: e.detail.action });
+        return;
+      }
       this.handleAIAction(e.detail.notePath, e.detail.action, e.detail.chapterTitle);
     }) as EventListener);
 
@@ -246,6 +272,10 @@ export default class AIBookManagerPlugin extends Plugin {
     if (this.fileWatcher) {
       this.fileWatcher.stop();
     }
+    // Persist queue state so in-progress tasks survive plugin reload
+    this.saveTagQueue().catch(err => {
+      this.log.warn('Failed to persist queue on unload', { error: String(err) });
+    });
     this.log.info('Plugin unloaded');
   }
 

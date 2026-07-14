@@ -7,23 +7,8 @@ import { BookRecord } from '../models';
 import { Logger, NOOP_LOGGER } from '../logger';
 import { sanitizeTitle } from '../utils/path-utils';
 
-// ---- Types ----
-
-export interface NoteTemplateData {
-  title: string;
-  author: string | null;
-  format: string;
-  fileName: string;
-  filePath: string;
-  fileSize: number;
-  bookId: string;
-  tags: string[];
-  createdAt: number;
-}
-
 // ---- Constants ----
 
-const BUTTON_CONTAINER_CLASS = 'ai-book-manager-actions';
 const TOC_SECTION = '📋 本书目录';
 
 // ---- Note Service ----
@@ -32,11 +17,13 @@ export class NoteService {
   private app: App;
   private notesFolder: string;
   private log: Logger;
+  private eventToken: string;
 
-  constructor(app: App, notesFolder: string, logger: Logger = NOOP_LOGGER) {
+  constructor(app: App, notesFolder: string, logger: Logger = NOOP_LOGGER, eventToken: string = '') {
     this.app = app;
     this.notesFolder = notesFolder;
     this.log = logger;
+    this.eventToken = eventToken;
   }
 
   // ---- Create / Read / Update ----
@@ -145,8 +132,9 @@ export class NoteService {
     return `---
 title: "${this.escapeYaml(book.title)}"
 author: "${book.author ? this.escapeYaml(book.author) : 'Unknown'}"
+book_id: "${book.id}"
 format: "${book.format}"
-tags: [${book.tags.map(t => `"${t}"`).join(', ')}]
+tags: [${book.tags.map(t => `"${this.escapeYaml(t)}"`).join(', ')}]
 category: ""
 created: "${created}"
 ---
@@ -160,7 +148,7 @@ created: "${created}"
 `;
   }
 
-  // ---- Button Injection (for MarkdownPostProcessor) ----
+  // ---- Button State Update (for MarkdownPostProcessor) ----
 
   updateButtonStates(containerEl: HTMLElement, _sourcePath: string): void {
     const text = containerEl.textContent || '';
@@ -182,140 +170,6 @@ created: "${created}"
     tocLinks.forEach((link) => {
       const chapter = link.getAttribute('data-chapter') || '';
       if (chapter && generatedChapters.some(c => c.includes(chapter))) link.textContent = '🔄 重新生成';
-    });
-  }
-
-  injectButtons(containerEl: HTMLElement, bookTitle: string, sourcePath: string): void {
-    if (containerEl.querySelector(`.${BUTTON_CONTAINER_CLASS}`)) return;
-
-    const buttonContainer = containerEl.createDiv({ cls: BUTTON_CONTAINER_CLASS });
-
-    const label = buttonContainer.createEl('div', {
-      text: '🤖 AI 操作',
-      cls: 'ai-book-manager-label',
-    });
-
-    const btnRow = buttonContainer.createDiv({ cls: 'ai-book-manager-btn-row' });
-
-    // Create buttons immediately
-    this.createActionButton(btnRow, '📝 生成简介', sourcePath, 'summary');
-    this.createActionButton(btnRow, '📋 生成目录', sourcePath, 'toc');
-    this.createActionButton(btnRow, '🧠 生成 Skill', sourcePath, 'skill');
-
-    // Async update button states
-    this.detectExistingSections(sourcePath, [
-      { section: '📝 书籍简介' },
-      { section: TOC_SECTION },
-      { section: '🧠 AI Skill' },
-    ]).then(states => {
-      const allBtns = btnRow.querySelectorAll('button');
-      if (states.get('📝 书籍简介')) {
-        (allBtns[0] as HTMLButtonElement).textContent = '🔄 重新生成简介';
-      }
-      if (states.get(TOC_SECTION)) {
-        (allBtns[1] as HTMLButtonElement).textContent = '🔄 重新生成目录';
-      }
-      if (states.get('🧠 AI Skill')) {
-        (allBtns[2] as HTMLButtonElement).textContent = '🔄 重新生成 Skill';
-      }
-    }).catch(() => {});
-  }
-
-  /**
-   * Inject per-chapter buttons into the TOC section.
-   * Called by MarkdownPostProcessor when a TOC section is found.
-   */
-  injectTOCButtons(tocContainer: HTMLElement, sourcePath: string, fileContent: string): void {
-    const listItems = tocContainer.querySelectorAll('li');
-    listItems.forEach((li) => {
-      const text = li.textContent?.trim() || '';
-      if (!text || text.length < 3) return;
-      if (li.querySelector('.ai-toc-btn')) return;
-
-      // Check if overview exists
-      const sectionMarker = `📝 ${text}`;
-      const hasOverview = fileContent.includes(`## ${sectionMarker}`);
-
-      // Add button as inline span
-      const btn = this.makeTOCButton(
-        hasOverview ? '🔄' : '📝 生成概要',
-        sourcePath,
-        'chapter-overview',
-        text,
-      );
-      li.appendChild(document.createTextNode(' '));
-      li.appendChild(btn);
-    });
-  }
-
-  private makeTOCButton(
-    label: string,
-    notePath: string,
-    action: string,
-    chapterTitle: string,
-  ): HTMLButtonElement {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.className = 'ai-toc-btn';
-    btn.addEventListener('click', () => {
-      btn.setAttribute('disabled', 'true');
-      btn.addClass('ai-book-btn-loading');
-      document.dispatchEvent(
-        new CustomEvent('ai-book-action', {
-          detail: { notePath, action, chapterTitle },
-        }),
-      );
-    });
-    return btn;
-  }
-
-  private async detectExistingSections(
-    sourcePath: string,
-    sections: Array<{ section: string }>,
-  ): Promise<Map<string, boolean>> {
-    const result = new Map<string, boolean>();
-    try {
-      const file = this.app.vault.getFileByPath(sourcePath);
-      if (file) {
-        const content = await this.app.vault.read(file);
-        for (const { section } of sections) {
-          result.set(section, content.includes(`## ${section}`));
-        }
-      }
-    } catch {
-      for (const { section } of sections) {
-        result.set(section, false);
-      }
-    }
-    return result;
-  }
-
-  private createActionButton(
-    container: HTMLElement,
-    label: string,
-    notePath: string,
-    action: string,
-  ): void {
-    const btn = container.createEl('button', { text: label });
-    btn.setAttr('data-note-path', notePath);
-    btn.setAttr('data-action', action);
-
-    btn.addEventListener('click', async () => {
-      const isRegenerate = label.includes('重新生成');
-      if (isRegenerate) {
-        const ok = confirm('确定要重新生成吗？现有内容将被覆盖。');
-        if (!ok) return;
-      }
-
-      btn.setAttr('disabled', 'true');
-      btn.setText('⏳ 生成中...');
-      btn.addClass('ai-book-btn-loading');
-
-      document.dispatchEvent(
-        new CustomEvent('ai-book-action', {
-          detail: { notePath, action },
-        }),
-      );
     });
   }
 
@@ -393,16 +247,16 @@ ${bookLink}
   }
 
   private escapeYaml(value: string): string {
-    return value.replace(/"/g, '\\"');
+    return value
+      .replace(/\\/g, '\\\\')   // backslash first (must precede other escapes)
+      .replace(/"/g, '\\"')     // double quote
+      .replace(/\n/g, '\\n')    // newline
+      .replace(/\r/g, '\\r')    // carriage return
+      .replace(/\t/g, '\\t');   // tab
   }
 
   private escapeRegex(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
-  private formatFileSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
 }

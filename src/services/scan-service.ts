@@ -238,29 +238,22 @@ export class ScanService {
     let scanResult: ScanResult;
 
     if (newFilePaths && newFilePaths.length > 0) {
-      // Targeted: only scan the provided files
+      // Targeted: scan once, then filter to the files we care about
+      const fullScan = runScanner(
+        this.settings.bookDirectory,
+        this.settings.supportedFormats,
+        existingBooks,
+        this.log,
+      );
+      const matching = fullScan.books.filter(b => newFilePaths.includes(b.filePath));
       scanResult = {
-        books: [],
-        totalFound: 0,
-        newBooks: 0,
-        skipped: 0,
-        failed: 0,
-        errors: [],
+        books: matching,
+        totalFound: fullScan.totalFound,
+        newBooks: matching.length,
+        skipped: fullScan.skipped,
+        failed: fullScan.failed,
+        errors: fullScan.errors,
       };
-
-      for (const filePath of newFilePaths) {
-        // Quick hash check against known books
-        const fullScan = runScanner(
-          this.settings.bookDirectory,
-          this.settings.supportedFormats,
-          existingBooks,
-          this.log,
-        );
-        // Filter to only the files we care about
-        const matching = fullScan.books.filter(b => newFilePaths.includes(b.filePath));
-        scanResult.books.push(...matching);
-      }
-      scanResult.newBooks = scanResult.books.length;
     } else {
       // Full incremental scan
       scanResult = runScanner(

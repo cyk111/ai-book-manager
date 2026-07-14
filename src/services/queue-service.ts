@@ -186,6 +186,25 @@ export class TaskQueue<T = unknown> {
     task.status = 'running';
     task.startedAt = Date.now();
     task.retries++;
+
+    // Hard cap: if a task keeps failing (e.g. malformed input), stop retrying
+    const MAX_RETRIES = 3;
+    if (task.retries > MAX_RETRIES) {
+      task.status = 'failed';
+      task.error = `Max retries (${MAX_RETRIES}) exceeded`;
+      task.completedAt = Date.now();
+      this.log.warn('Task abandoned: max retries exceeded', {
+        taskId: task.id,
+        type: task.type,
+        retries: task.retries,
+      });
+      this.emit('task-failed', { taskId: task.id, error: task.error });
+      this.inProgress.delete(task.id);
+      this.lastTaskEndTime = Date.now();
+      this.persist();
+      this.processNext();
+      return;
+    }
     this.inProgress.add(task.id);
 
     this.emit('task-started', { taskId: task.id, type: task.type });

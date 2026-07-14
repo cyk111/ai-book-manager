@@ -259,11 +259,12 @@ export class SourceScanner {
     const content = `---
 title: "${this.escapeYaml(book.title)}"
 author: "${book.author ? this.escapeYaml(book.author) : '未知'}"
+book_id: "${book.id}"
 format: "md"
 tags: []
 category: ""
-source: "${source.name}"
-source_path: "${book.sourcePath || ''}"
+source: "${this.escapeYaml(source.name)}"
+source_path: "${this.escapeYaml(book.sourcePath || '')}"
 created: "${created}"
 ---
 
@@ -295,7 +296,12 @@ ${sourceLink ? `> 💡 划线和高亮在 [[${book.sourcePath}|原始笔记]] �
   }
 
   private escapeYaml(value: string): string {
-    return value.replace(/"/g, '\\"');
+    return value
+      .replace(/\\/g, '\\\\')   // backslash first (must precede other escapes)
+      .replace(/"/g, '\\"')     // double quote
+      .replace(/\n/g, '\\n')    // newline
+      .replace(/\r/g, '\\r')    // carriage return
+      .replace(/\t/g, '\\t');   // tab
   }
 }
 
